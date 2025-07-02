@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 
 from app.core.config import get_settings
-from app.routers import auth, markets, bets, analysis, config
+from app.routers import auth, markets, bets, analysis, config, websocket
 
 # Global settings
 settings = get_settings()
@@ -71,6 +71,7 @@ app.include_router(markets.router, prefix="/markets", tags=["Market Scanning"])
 app.include_router(bets.router, prefix="/bets", tags=["Bet Placement"])
 app.include_router(analysis.router, prefix="/analysis", tags=["Bet Analysis"])
 app.include_router(config.router, prefix="/config", tags=["Configuration"])
+app.include_router(websocket.router, prefix="/websocket", tags=["Real-Time WebSocket"])
 
 @app.get("/", tags=["Health"])
 async def root():
