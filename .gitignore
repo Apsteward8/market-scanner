@@ -1,1 +1,38 @@
-.env
+# ============================================================================
+# .env
+# Environment configuration for ProphetX Market Scanner
+# ============================================================================
+
+# ProphetX API Credentials - Production (for fetching market data)
+PROPHETX_ACCESS_KEY=3e70f7b6fb4b933f771d1af589f64c59
+PROPHETX_SECRET_KEY=5261fbcd72c308a963634463ff04e293
+
+# ProphetX API Credentials - Sandbox (for placing test bets)
+PROPHETX_SANDBOX_ACCESS_KEY=your_sandbox_access_key_here  
+PROPHETX_SANDBOX_SECRET_KEY=your_sandbox_secret_key_here
+
+# ProphetX Environment Settings
+# Set to 'production' for live betting or 'sandbox' for testing
+# Data fetching always uses production, bet placement uses this setting
+PROPHETX_BETTING_ENVIRONMENT=sandbox
+
+# Market Scanner Strategy Settings
+MIN_STAKE_THRESHOLD=7500.0          # Minimum combined value + stake to follow ($7500)
+UNDERCUT_IMPROVEMENT=1              # Odds improvement points (e.g., +107 becomes +108)
+
+# Risk Management - Portfolio Level
+MAX_EXPOSURE_TOTAL=10000.0          # Maximum total portfolio exposure ($10k)
+
+# API and Performance Settings
+API_DEBUG=false
+MAX_CONCURRENT_REQUESTS=10
+REQUEST_TIMEOUT_SECONDS=30
+
+# Database and Logging
+DATABASE_URL=sqlite:///./market_scanner.db
+LOG_LEVEL=INFO
+SAVE_SCAN_HISTORY=true
+
+# ProphetX Commission Settings
+PROPHETX_COMMISSION_RATE=0.03       # 3% commission rate on winning bets
+BREAK_EVEN_BUFFER=0.01              # 1% buffer above break-even for profitability

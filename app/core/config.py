@@ -1,44 +1,60 @@
 #!/usr/bin/env python3
 """
-FastAPI Configuration Module
-Handles application settings and ProphetX credentials
+Configuration Management for ProphetX Market Scanner
 """
 
-import os
-import json
-from functools import lru_cache
-from typing import List, Optional, Any
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings
+from typing import Optional
+import os
 
 class Settings(BaseSettings):
-    """Application settings using Pydantic BaseSettings"""
+    """Application settings loaded from environment variables"""
     
+    # =============================================================================
     # ProphetX API Credentials
-    prophetx_access_key: str = Field(...)
-    prophetx_secret_key: str = Field(...)
+    # =============================================================================
+    prophetx_production_access_key: str = Field(..., description="ProphetX production access key")
+    prophetx_production_secret_key: str = Field(..., description="ProphetX production secret key")
+    prophetx_sandbox_access_key: str = Field(..., description="ProphetX sandbox access key")
+    prophetx_sandbox_secret_key: str = Field(..., description="ProphetX sandbox secret key")
     
-    # ProphetX Settings
-    prophetx_sandbox: bool = Field(True)
-    prophetx_min_stake: int = Field(5000)
-    prophetx_undercut_amount: int = Field(1)
-    prophetx_max_bet_size: int = Field(1000)
-    prophetx_target_sports: str = Field("Baseball,American Football,Basketball")
+    # =============================================================================
+    # ProphetX Environment Settings
+    # =============================================================================
+    prophetx_betting_environment: str = Field("sandbox", description="Where to place bets: 'production' or 'sandbox'")
     
-    # API Settings
-    api_title: str = "ProphetX Betting Tool API"
-    api_version: str = "1.0.0"
-    api_debug: bool = Field(False)
+    # =============================================================================
+    # Market Scanner Strategy Settings  
+    # =============================================================================
+    min_stake_threshold: float = Field(10000.0, description="Minimum combined stake + value to follow")
+    min_individual_threshold: float = Field(2500.0, description="Minimum individual stake and value required")
+    undercut_improvement: int = Field(1, description="Odds improvement points")
     
-    # Database (SQLite for bet history)
-    database_url: str = Field("sqlite:///./prophetx_bets.db")
+    # =============================================================================
+    # Risk Management
+    # =============================================================================
+    max_exposure_total: float = Field(10000.0, description="Maximum total portfolio exposure")
     
-    # Rate limiting
-    rate_limit_calls_per_minute: int = Field(60)
+    # =============================================================================
+    # API and Performance Settings
+    # =============================================================================
+    api_debug: bool = Field(False, description="Enable API debug logging")
+    max_concurrent_requests: int = Field(10, description="Maximum concurrent API requests")
+    request_timeout_seconds: int = Field(30, description="API request timeout in seconds")
     
-    # Bet placement defaults
-    default_bet_size: float = Field(5.0)
-    dry_run_mode: bool = Field(True)
+    # =============================================================================
+    # Database and Logging
+    # =============================================================================
+    database_url: str = Field("sqlite:///./market_scanner.db", description="Database connection string")
+    log_level: str = Field("INFO", description="Logging level")
+    save_scan_history: bool = Field(True, description="Save scan history to database")
+    
+    # =============================================================================
+    # ProphetX Commission Settings
+    # =============================================================================
+    prophetx_commission_rate: float = Field(0.03, description="ProphetX commission rate (3%)")
+    break_even_buffer: float = Field(0.01, description="Buffer above break-even for profitability")
     
     model_config = {
         "env_file": ".env",
@@ -48,126 +64,82 @@ class Settings(BaseSettings):
     }
     
     @property
-    def sandbox(self) -> bool:
-        """Alias for prophetx_sandbox"""
-        return self.prophetx_sandbox
+    def is_production_betting(self) -> bool:
+        """Check if we're betting in production environment"""
+        return self.prophetx_betting_environment.lower() == "production"
     
     @property
-    def min_stake_threshold(self) -> int:
-        """Alias for prophetx_min_stake"""
-        return self.prophetx_min_stake
-    
-    @property
-    def undercut_amount(self) -> int:
-        """Alias for prophetx_undercut_amount"""
-        return self.prophetx_undercut_amount
-    
-    @property
-    def max_bet_size(self) -> int:
-        """Alias for prophetx_max_bet_size"""
-        return self.prophetx_max_bet_size
-    
-    @property
-    def target_sports(self) -> List[str]:
-        """Parse target sports from comma-separated string"""
-        return [sport.strip() for sport in self.prophetx_target_sports.split(',') if sport.strip()]
-    
-    @property
-    def prophetx_base_url(self) -> str:
-        """Get ProphetX API base URL based on environment"""
-        if self.sandbox:
-            return "https://api-ss-sandbox.betprophet.co"
+    def betting_access_key(self) -> str:
+        """Get the appropriate access key for betting environment"""
+        if self.is_production_betting:
+            return self.prophetx_production_access_key
         else:
-            return "https://api-ss.betprophet.co"
+            return self.prophetx_sandbox_access_key
     
-    def to_dict(self) -> dict:
-        """Convert settings to dictionary (safe for API responses)"""
+    @property
+    def betting_secret_key(self) -> str:
+        """Get the appropriate secret key for betting environment"""  
+        if self.is_production_betting:
+            return self.prophetx_production_secret_key
+        else:
+            return self.prophetx_sandbox_secret_key
+    
+    @property
+    def betting_base_url(self) -> str:
+        """Get the appropriate base URL for betting environment"""
+        if self.is_production_betting:
+            return "https://cash.api.prophetx.co"
+        else:
+            return "https://api-ss-sandbox.betprophet.co"
+    
+    def validate_settings(self) -> dict:
+        """Validate critical settings and return status"""
+        issues = []
+        
+        # Check required API keys
+        if not self.prophetx_production_access_key:
+            issues.append("Missing PROPHETX_PRODUCTION_ACCESS_KEY")
+        if not self.prophetx_production_secret_key:
+            issues.append("Missing PROPHETX_PRODUCTION_SECRET_KEY")
+            
+        # Check betting environment keys
+        if self.is_production_betting:
+            if not self.prophetx_production_access_key or not self.prophetx_production_secret_key:
+                issues.append("Production betting enabled but missing production credentials")
+        else:
+            if not self.prophetx_sandbox_access_key or not self.prophetx_sandbox_secret_key:
+                issues.append("Sandbox betting enabled but missing sandbox credentials")
+        
+        # Check thresholds
+        if self.min_stake_threshold < 1000:
+            issues.append("MIN_STAKE_THRESHOLD should be at least $1000 for meaningful signals")
+            
+        if self.prophetx_commission_rate <= 0 or self.prophetx_commission_rate >= 0.1:
+            issues.append("PROPHETX_COMMISSION_RATE should be between 0 and 10%")
+        
         return {
-            "sandbox": self.sandbox,
-            "min_stake_threshold": self.min_stake_threshold,
-            "undercut_amount": self.undercut_amount,
-            "max_bet_size": self.max_bet_size,
-            "target_sports": self.target_sports,
-            "default_bet_size": self.default_bet_size,
-            "dry_run_mode": self.dry_run_mode,
-            "prophetx_base_url": self.prophetx_base_url
+            "valid": len(issues) == 0,
+            "issues": issues,
+            "environment": {
+                "data_fetching": "production",
+                "betting": self.prophetx_betting_environment,
+                "commission_rate": f"{self.prophetx_commission_rate*100:.1f}%",
+                "min_threshold": f"${self.min_stake_threshold:,.0f}"
+            }
         }
 
-@lru_cache()
-def get_settings() -> Settings:
-    """
-    Get application settings (cached)
-    This function is cached so settings are loaded once per app lifecycle
-    """
-    return Settings()
-
-class ConfigManager:
-    """Configuration management utilities"""
-    
-    @staticmethod
-    def validate_credentials(access_key: str, secret_key: str) -> bool:
-        """Validate that credentials are properly formatted"""
-        if not access_key or not secret_key:
-            return False
-        
-        # Basic validation - ProphetX keys should be hex strings
-        if len(access_key) < 10 or len(secret_key) < 10:
-            return False
-            
-        return True
-    
-    @staticmethod
-    def create_sample_env_file(filepath: str = ".env") -> None:
-        """Create a sample .env file with all configuration options"""
-        sample_env = """# ProphetX API Credentials
-PROPHETX_ACCESS_KEY=your_access_key_here
-PROPHETX_SECRET_KEY=your_secret_key_here
-
-# ProphetX Settings
-PROPHETX_SANDBOX=true
-PROPHETX_MIN_STAKE=5000
-PROPHETX_UNDERCUT_AMOUNT=1
-PROPHETX_MAX_BET_SIZE=1000
-PROPHETX_TARGET_SPORTS=Baseball,American Football,Basketball
-
-# API Settings
-API_DEBUG=false
-
-# Database
-DATABASE_URL=sqlite:///./prophetx_bets.db
-
-# Rate Limiting
-RATE_LIMIT_CALLS_PER_MINUTE=60
-
-# Bet Placement
-DEFAULT_BET_SIZE=5.0
-DRY_RUN_MODE=true
-"""
-        
-        with open(filepath, 'w') as f:
-            f.write(sample_env)
-    
-    @staticmethod
-    def load_from_json(filepath: str) -> Optional[dict]:
-        """Load configuration from JSON file"""
-        try:
-            if not os.path.exists(filepath):
-                return None
-                
-            with open(filepath, 'r') as f:
-                return json.load(f)
-        except Exception:
-            return None
-    
-    @staticmethod
-    def save_to_json(config_dict: dict, filepath: str) -> bool:
-        """Save configuration to JSON file"""
-        try:
-            with open(filepath, 'w') as f:
-                json.dump(config_dict, f, indent=2)
-            return True
-        except Exception:
-            return False
-
 # Global settings instance
-settings = get_settings()
+_settings: Optional[Settings] = None
+
+def get_settings() -> Settings:
+    """Get application settings (singleton pattern)"""
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings
+
+def reload_settings() -> Settings:
+    """Reload settings from environment"""
+    global _settings
+    _settings = Settings()
+    return _settings

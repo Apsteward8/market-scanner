@@ -1,57 +1,26 @@
 #!/usr/bin/env python3
 """
-ProphetX FastAPI Application
-Main application file for the ProphetX betting tool API
+ProphetX Market Scanner API
+Main FastAPI application for scanning and following high wager bets
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-import uvicorn
+import logging
+from datetime import datetime, timezone
 
-from app.core.config import get_settings
-from app.routers import auth, markets, bets, analysis, config, websocket
-
-# Global settings
-settings = get_settings()
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan events"""
-    # Startup
-    print("🚀 ProphetX API starting up...")
-    print(f"📝 Environment: {'SANDBOX' if settings.sandbox else 'PRODUCTION'}")
-    print(f"🎯 Target sports: {', '.join(settings.target_sports)}")
-    
-    yield
-    
-    # Shutdown
-    print("🛑 ProphetX API shutting down...")
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Create FastAPI app
 app = FastAPI(
-    title="ProphetX Betting Tool API",
-    description="""
-    API for following smart money on ProphetX betting exchange.
-    
-    ## Features
-    
-    * **Authentication** - Manage ProphetX API credentials and tokens
-    * **Market Scanning** - Find large bets worth following
-    * **Bet Analysis** - Analyze opportunities and calculate undercut odds  
-    * **Bet Placement** - Place follow bets with proper odds
-    * **History & Tracking** - Track bet performance and results
-    
-    ## Strategy
-    
-    This tool implements a "follow the smart money" strategy:
-    1. Scan ProphetX markets for large bets (>$5k)
-    2. Assume large bets indicate sharp/informed money
-    3. Place follow bets with slightly worse odds to get queue priority
-    4. Profit from being first in line when action flows
-    """,
+    title="ProphetX Market Scanner",
+    description="Automated betting system that follows high-value wagers on ProphetX",
     version="1.0.0",
-    lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -59,51 +28,56 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=["*"],  # Configure this properly for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Include routers
-app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
-app.include_router(markets.router, prefix="/markets", tags=["Market Scanning"])
-app.include_router(bets.router, prefix="/bets", tags=["Bet Placement"])
-app.include_router(analysis.router, prefix="/analysis", tags=["Bet Analysis"])
-app.include_router(config.router, prefix="/config", tags=["Configuration"])
-app.include_router(websocket.router, prefix="/websocket", tags=["Real-Time WebSocket"])
+from app.routers import scanner
+app.include_router(scanner.router, prefix="/scanner", tags=["Market Scanner"])
 
-@app.get("/", tags=["Health"])
+@app.get("/")
 async def root():
-    """API health check"""
+    """Root endpoint with basic API information"""
     return {
-        "status": "healthy",
-        "service": "ProphetX Betting Tool API",
+        "message": "ProphetX Market Scanner API",
         "version": "1.0.0",
-        "environment": "sandbox" if settings.sandbox else "production",
-        "docs": "/docs",
-        "redoc": "/redoc"
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "docs": "/docs"
     }
 
-@app.get("/health", tags=["Health"])
+@app.get("/health")
 async def health_check():
-    """Detailed health check"""
+    """Health check endpoint"""
     return {
         "status": "healthy",
-        "timestamp": "2024-01-01T00:00:00Z",
-        "environment": "sandbox" if settings.sandbox else "production",
-        "settings": {
-            "min_stake_threshold": settings.min_stake_threshold,
-            "target_sports": settings.target_sports,
-            "max_bet_size": settings.max_bet_size
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "service": "market-scanner"
+    }
+
+@app.get("/quick-test")
+async def quick_test():
+    """Quick test endpoint to verify everything is working"""
+    from app.core.config import get_settings
+    
+    settings = get_settings()
+    validation = settings.validate_settings()
+    
+    return {
+        "status": "API is running",
+        "message": "Use /scanner endpoints for market scanning functionality",
+        "settings_valid": validation["valid"],
+        "settings_issues": validation.get("issues", []),
+        "endpoints": {
+            "authenticate": "/scanner/authenticate",
+            "scan_opportunities": "/scanner/scan-opportunities",
+            "ncaaf_events": "/scanner/ncaaf-events",
+            "settings": "/scanner/settings"
         }
     }
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host="127.0.0.1",
-        port=8000,
-        reload=True,
-        log_level="info"
-    )
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8004, reload=True)

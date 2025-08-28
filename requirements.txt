@@ -1,40 +1,39 @@
-# FastAPI and ASGI server
-fastapi>=0.104.1
-uvicorn[standard]>=0.24.0
+# Web Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
 
-# HTTP client for API calls
-requests>=2.31.0
+# HTTP Requests  
+httpx==0.25.2
+requests==2.31.0
 
-# WebSocket support
-websockets>=12.0
+# Environment and Configuration
+python-dotenv==1.0.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
 
-# Configuration management
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
+# Data Processing
+pandas==2.1.4
+numpy==1.26.2
 
-# Environment variables support
-python-dotenv>=1.0.0
+# Database (SQLite for now, can upgrade later)
+sqlalchemy==2.0.23
+alembic==1.13.1
 
-# Data validation and serialization
-email-validator>=2.1.0
+# Async Support
+asyncio-mqtt==0.13.0
+aiofiles==23.2.1
 
-# Database (optional - for future bet history storage)
-sqlalchemy>=2.0.23
-# Note: sqlite3 is built into Python, no need to install
+# Logging and Monitoring
+structlog==23.2.0
 
-# Date/time handling
-python-dateutil>=2.8.2
+# Date/Time
+python-dateutil==2.8.2
+pytz==2023.3
 
-# Type hints
-typing-extensions>=4.8.0
+# Testing (optional, for later)
+pytest==7.4.3
+pytest-asyncio==0.21.1
 
-# Development and testing dependencies (optional)
-pytest>=7.4.3
-pytest-asyncio>=0.21.1
-httpx>=0.25.2  # For testing async endpoints
-
-# Optional: For enhanced logging
-loguru>=0.7.2
-
-# Optional: For API documentation styling
-markdown>=3.5.1
+# Development Tools (optional)
+black==23.11.0
+isort==5.13.0
