@@ -115,8 +115,8 @@ async def scan_opportunities():
                 "our_strategy": {
                     "side": opp.large_bet_side,  # We bet the same side as large bettor
                     "our_odds": opp.our_proposed_odds,  # Worse odds for us
-                    "creates_liquidity_at": -opp.our_proposed_odds if opp.our_proposed_odds < 0 else abs(opp.our_proposed_odds),
-                    "formatted": f"Bet {opp.large_bet_side} @ {opp.our_proposed_odds:+d} → Creates {opp.available_side} @ {(-opp.our_proposed_odds if opp.our_proposed_odds < 0 else abs(opp.our_proposed_odds)):+d}",
+                    "creates_liquidity_at": -opp.our_proposed_odds,  # Always opposite sign
+                    "formatted": f"Bet {opp.large_bet_side} @ {opp.our_proposed_odds:+d} → Creates {opp.available_side} @ {(-opp.our_proposed_odds):+d}",
                     "explanation": f"By betting {opp.large_bet_side} at worse odds ({opp.our_proposed_odds:+d} vs {opp.large_bet_odds:+d}), we create better odds for {opp.available_side} bettors"
                 }
             })
@@ -555,8 +555,8 @@ async def test_odds_ladder():
             better_odds = market_scanning_service._find_next_valid_odds(odds, better_for_bettor=True)
             
             # Calculate what liquidity odds we create
-            our_liquidity_odds = -worse_odds if worse_odds < 0 else abs(worse_odds)
-            their_liquidity_odds = -odds if odds < 0 else abs(odds)
+            our_liquidity_odds = -worse_odds  # Always opposite sign
+            their_liquidity_odds = -odds      # Always opposite sign
             
             results.append({
                 "large_bettor_odds": odds,
@@ -567,7 +567,7 @@ async def test_odds_ladder():
                     "their_liquidity_odds": their_liquidity_odds,
                     "our_liquidity_odds": our_liquidity_odds,
                     "improvement": our_liquidity_odds - their_liquidity_odds,
-                    "better_for_other_bettors": our_liquidity_odds > their_liquidity_odds if their_liquidity_odds > 0 else our_liquidity_odds < their_liquidity_odds
+                    "better_for_other_bettors": (our_liquidity_odds > their_liquidity_odds) if their_liquidity_odds > 0 else (our_liquidity_odds < their_liquidity_odds)
                 },
                 "example": f"Large bet: {odds:+d} → We bet: {worse_odds:+d} → Creates liquidity at {our_liquidity_odds:+d} vs their {their_liquidity_odds:+d}"
             })

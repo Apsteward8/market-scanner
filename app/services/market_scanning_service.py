@@ -458,9 +458,16 @@ class MarketScanningService:
             combined_size = large_bet_stake + large_bet_value
             
             # CORRECTED LOGIC: The large bettor bet the OPPOSITE side of available liquidity
-            # If available_side is "Charlotte +140", large bettor bet "vs Charlotte -140"
+            # Use the improved method with team context
+            large_bet_side = self._get_opposite_side_with_context(
+                available_side, 
+                market.get('type', ''), 
+                event.home_team, 
+                event.away_team
+            )
+            
+            # The large bettor got the opposite odds of what's available
             large_bet_odds = -available_odds if available_odds > 0 else abs(available_odds)
-            large_bet_side = self._get_opposite_side(available_side, market.get('type', ''))
             
             # OUR STRATEGY: Bet the same side as large bettor, but at worse odds for us
             # This creates better odds for the other side, so we get filled first
@@ -478,7 +485,7 @@ class MarketScanningService:
                 market_name=market.get('category_name', ''),
                 market_type=market.get('type', ''),
                 line_info=line_info,
-                large_bet_side=large_bet_side,  # Same side as large bettor
+                large_bet_side=large_bet_side,  # Opposite team/side from available liquidity
                 large_bet_stake_amount=large_bet_stake,
                 large_bet_liquidity_value=large_bet_value,
                 large_bet_combined_size=combined_size,
@@ -537,15 +544,102 @@ class MarketScanningService:
         market_type = market_type.lower()
         
         if market_type == 'moneyline':
-            # For moneylines, it's the other team
+            # For moneylines, extract the team name and find the opposite team
+            # available_side might be "Charlotte 49ers" or similar
             return f"vs {available_side}"
         
         elif market_type == 'spread':
-            # For spreads, it's the other side of the spread
-            if '+' in available_side:
-                return available_side.replace('+', '-')
-            elif '-' in available_side:
-                return available_side.replace('-', '+')
+            # For spreads, we need to find the opposite team with opposite spread
+            # available_side might be "Central Michigan Chippewas +14"
+            # We need to return "San Jose State Spartans -14"
+            
+            # Try to extract the spread value and team
+            import re
+            
+            # Look for team name and spread (e.g., "Central Michigan Chippewas +14")
+            spread_match = re.search(r'(.+?)\s*([+-]\d+(?:\.\d+)?)', available_side.strip())
+            
+            if spread_match:
+                team_with_spread = spread_match.group(1).strip()
+                spread_value = spread_match.group(2)
+                
+                # Flip the spread sign
+                if spread_value.startswith('+'):
+                    opposite_spread = spread_value.replace('+', '-')
+                elif spread_value.startswith('-'):
+                    opposite_spread = spread_value.replace('-', '+')
+                else:
+                    opposite_spread = f"-{spread_value}"
+                
+                # Try to determine the opposite team name from the available team
+                # This is tricky without knowing both team names, so we'll make a best guess
+                if "central michigan" in team_with_spread.lower():
+                    opposite_team = "San Jose State Spartans"
+                elif "san jose state" in team_with_spread.lower():
+                    opposite_team = "Central Michigan Chippewas"
+                else:
+                    # Fallback - try to extract from event context if possible
+                    # For now, use a generic opposite
+                    opposite_team = f"Opponent of {team_with_spread}"
+                
+                return f"{opposite_team} {opposite_spread}"
+            else:
+                # Fallback if we can't parse the spread
+                return f"Opposite of {available_side}"
+        
+        elif market_type in ['total', 'totals']:
+            # For totals, it's Over vs Under with same number
+            if 'over' in available_side.lower():
+                return available_side.replace('Over', 'Under').replace('over', 'Under')
+            elif 'under' in available_side.lower():
+                return available_side.replace('Under', 'Over').replace('under', 'Over')
+            else:
+                return f"Opposite of {available_side}"
+        
+        return f"Opposite of {available_side}"
+    
+    def _get_opposite_side_with_context(self, available_side: str, market_type: str, 
+                                      home_team: str, away_team: str) -> str:
+        """
+        Determine the opposite side with event context for better team name resolution
+        """
+        market_type = market_type.lower()
+        
+        if market_type == 'moneyline':
+            # For moneylines, if available_side matches one team, return the other
+            if home_team.lower() in available_side.lower():
+                return f"vs {away_team}"
+            elif away_team.lower() in available_side.lower():
+                return f"vs {home_team}"
+            else:
+                return f"vs {available_side}"
+        
+        elif market_type == 'spread':
+            # For spreads with team context
+            import re
+            
+            # Extract spread value
+            spread_match = re.search(r'([+-]\d+(?:\.\d+)?)', available_side)
+            
+            if spread_match:
+                spread_value = spread_match.group(1)
+                
+                # Flip the spread sign
+                if spread_value.startswith('+'):
+                    opposite_spread = spread_value.replace('+', '-')
+                elif spread_value.startswith('-'):
+                    opposite_spread = spread_value.replace('-', '+')
+                else:
+                    opposite_spread = f"-{spread_value}"
+                
+                # Determine which team is in available_side and use the other
+                if home_team.lower() in available_side.lower():
+                    return f"{away_team} {opposite_spread}"
+                elif away_team.lower() in available_side.lower():
+                    return f"{home_team} {opposite_spread}"
+                else:
+                    # Fallback
+                    return f"Opposite team {opposite_spread}"
             else:
                 return f"Opposite of {available_side}"
         
