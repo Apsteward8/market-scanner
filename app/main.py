@@ -37,9 +37,11 @@ app.add_middleware(
 # Include routers
 from app.routers import scanner
 from app.routers.arbitrage_test import router as arbitrage_router
+from app.routers.bet_placement import router as bet_placement_router
 
 app.include_router(scanner.router, prefix="/scanner", tags=["Market Scanner"])
 app.include_router(arbitrage_router, prefix="/arbitrage", tags=["Arbitrage Testing"])
+app.include_router(bet_placement_router, prefix="/betting", tags=["Bet Placement"])
 
 @app.get("/")
 async def root():
@@ -88,6 +90,15 @@ async def quick_test():
                 "test_calculation": "/arbitrage/test-arbitrage-calculation",
                 "test_commission": "/arbitrage/test-commission-scenarios", 
                 "test_sizing": "/arbitrage/test-bet-sizing-logic"
+            },
+            "bet_placement": {
+                "test_balance": "/betting/test-balance-integration",
+                "set_dry_run": "/betting/set-dry-run-mode",
+                "test_single_bet": "/betting/test-single-bet-placement",
+                "test_arbitrage": "/betting/test-arbitrage-placement", 
+                "place_all": "/betting/place-all-opportunities",
+                "summary": "/betting/placement-summary",
+                "placed_bets": "/betting/placed-bets"
             }
         }
     }

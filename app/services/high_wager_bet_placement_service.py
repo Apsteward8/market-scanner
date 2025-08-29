@@ -443,33 +443,21 @@ class HighWagerBetPlacementService:
     async def _check_balance_sufficiency(self, required_stake: float) -> Dict[str, Any]:
         """Check if we have sufficient balance for the bet"""
         try:
-            # Get current balance
-            balance = await self.prophetx_service.get_account_balance()
+            # Use ProphetX service's balance checking method
+            result = await self.prophetx_service.check_sufficient_funds(
+                required_amount=required_stake, 
+                safety_buffer=self.balance_buffer
+            )
             
-            if not balance.get("success"):
-                return {
-                    "sufficient_funds": False,
-                    "error": f"Failed to get balance: {balance.get('error')}"
-                }
+            if result.get("sufficient_funds"):
+                logger.info(f"✅ Balance check passed: ${result['available_balance']:.2f} available for ${required_stake} bet")
+            else:
+                logger.warning(f"❌ Balance check failed: Need ${result.get('shortfall', 0):.2f} more funds")
             
-            total_balance = balance["data"]["total"]
-            available_balance = balance["data"]["available"]
-            required_amount = required_stake + self.balance_buffer
-            
-            sufficient = available_balance >= required_amount
-            
-            logger.info(f"💰 Balance check: ${available_balance:.2f} available, ${required_amount:.2f} required")
-            
-            return {
-                "sufficient_funds": sufficient,
-                "total_balance": total_balance,
-                "available_balance": available_balance,
-                "required_amount": required_amount,
-                "buffer": self.balance_buffer,
-                "remaining_after_bet": available_balance - required_stake if sufficient else None
-            }
+            return result
             
         except Exception as e:
+            logger.error(f"❌ Balance check exception: {e}")
             return {
                 "sufficient_funds": False,
                 "error": f"Balance check exception: {str(e)}"
