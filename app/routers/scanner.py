@@ -583,4 +583,139 @@ async def test_odds_ladder():
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Odds ladder test failed: {str(e)}")
+        logger.error(f"Error analyzing opportunities with arbitrage: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error analyzing opportunities with arbitrage: {str(e)}")
+
+@router.get("/analyze-opportunities-with-arbitrage", response_model=Dict[str, Any])
+async def analyze_opportunities_with_arbitrage():
+    """
+    Scan for opportunities and analyze them for arbitrage and conflicts
+    
+    This combines the market scanning with arbitrage analysis
+    """
+    try:
+        logger.info("🔍 Starting scan with arbitrage analysis...")
+        
+        # Get opportunities from scanning service
+        opportunities = await market_scanning_service.scan_for_opportunities()
+        
+        if not opportunities:
+            return {
+                "success": True,
+                "message": "No opportunities found",
+                "data": {
+                    "opportunities": [],
+                    "betting_decisions": []
+                }
+            }
+        
+        # Import the arbitrage service
+        from app.services.high_wager_arbitrage_service import high_wager_arbitrage_service
+        
+        # Analyze for conflicts and arbitrage
+        betting_decisions = high_wager_arbitrage_service.detect_conflicts_and_arbitrage(opportunities)
+        
+        # Format the results
+        formatted_decisions = []
+        total_recommended_stakes = 0
+        arbitrage_opportunities = 0
+        single_bets = 0
+        
+        for decision in betting_decisions:
+            if decision["type"] == "single_opportunity":
+                analysis = decision["analysis"]
+                formatted_decision = {
+                    "type": "single_bet",
+                    "market_key": decision["market_key"],
+                    "opportunity": {
+                        "event": analysis.opportunity.event_name,
+                        "market": f"{analysis.opportunity.market_type} {analysis.opportunity.line_info}",
+                        "large_bet_side": analysis.opportunity.large_bet_side,
+                        "our_side": analysis.opportunity.large_bet_side,
+                        "our_odds": analysis.opportunity.our_proposed_odds,
+                        "combined_size": analysis.opportunity.large_bet_combined_size
+                    },
+                    "betting_analysis": {
+                        "stake": analysis.sizing.stake_amount,
+                        "expected_gross_winnings": analysis.sizing.expected_gross_winnings,
+                        "expected_commission": analysis.sizing.expected_commission,
+                        "expected_net_winnings": analysis.sizing.expected_net_winnings,
+                        "recommendation": analysis.recommendation,
+                        "reason": analysis.reason
+                    }
+                }
+                
+                if analysis.recommendation == "bet":
+                    total_recommended_stakes += analysis.sizing.stake_amount
+                    single_bets += 1
+            
+            elif decision["type"] == "opposing_opportunities":
+                analysis = decision["analysis"]
+                formatted_decision = {
+                    "type": "arbitrage_analysis",
+                    "market_key": decision["market_key"],
+                    "opportunities": [
+                        {
+                            "side": analysis.opportunity_1.large_bet_side,
+                            "odds": analysis.opportunity_1.our_proposed_odds,
+                            "combined_size": analysis.opportunity_1.large_bet_combined_size,
+                            "stake": analysis.bet_1_sizing.stake_amount
+                        },
+                        {
+                            "side": analysis.opportunity_2.large_bet_side,
+                            "odds": analysis.opportunity_2.our_proposed_odds,
+                            "combined_size": analysis.opportunity_2.large_bet_combined_size,
+                            "stake": analysis.bet_2_sizing.stake_amount
+                        }
+                    ],
+                    "arbitrage_analysis": {
+                        "is_arbitrage": analysis.is_arbitrage,
+                        "total_stake": analysis.total_stake,
+                        "guaranteed_profit": analysis.guaranteed_profit,
+                        "profit_margin": analysis.profit_margin,
+                        "recommendation": analysis.recommendation
+                    }
+                }
+                
+                if analysis.is_arbitrage and analysis.recommendation == "bet_both":
+                    arbitrage_opportunities += 1
+                    total_recommended_stakes += analysis.total_stake
+                elif analysis.recommendation in ["bet_first_only", "bet_second_only"]:
+                    single_bets += 1
+                    if analysis.recommendation == "bet_first_only":
+                        total_recommended_stakes += analysis.bet_1_sizing.stake_amount
+                    else:
+                        total_recommended_stakes += analysis.bet_2_sizing.stake_amount
+            
+            else:
+                formatted_decision = {
+                    "type": "conflict",
+                    "market_key": decision["market_key"],
+                    "action": "skip",
+                    "reason": "Multiple conflicting opportunities"
+                }
+            
+            formatted_decisions.append(formatted_decision)
+        
+        return {
+            "success": True,
+            "message": f"Analysis complete - {len(opportunities)} opportunities analyzed",
+            "data": {
+                "raw_opportunities": len(opportunities),
+                "betting_decisions": formatted_decisions,
+                "summary": {
+                    "arbitrage_opportunities": arbitrage_opportunities,
+                    "single_bet_recommendations": single_bets,
+                    "total_recommended_stakes": round(total_recommended_stakes, 2),
+                    "decisions_breakdown": {
+                        "bet_both_sides": arbitrage_opportunities,
+                        "bet_single_side": single_bets,
+                        "skip": len(formatted_decisions) - arbitrage_opportunities - single_bets
+                    }
+                }
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in arbitrage analysis: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")

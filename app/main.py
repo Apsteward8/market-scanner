@@ -36,7 +36,10 @@ app.add_middleware(
 
 # Include routers
 from app.routers import scanner
+from app.routers.arbitrage_test import router as arbitrage_router
+
 app.include_router(scanner.router, prefix="/scanner", tags=["Market Scanner"])
+app.include_router(arbitrage_router, prefix="/arbitrage", tags=["Arbitrage Testing"])
 
 @app.get("/")
 async def root():
@@ -45,7 +48,12 @@ async def root():
         "message": "ProphetX Market Scanner API",
         "version": "1.0.0",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "docs": "/docs"
+        "docs": "/docs",
+        "new_features": [
+            "High wager arbitrage detection with 3% commission adjustment",
+            "Automated bet sizing ($100 plus, bet-to-win-$100 minus)",
+            "Conflict resolution for opposing opportunities"
+        ]
     }
 
 @app.get("/health")
@@ -54,7 +62,8 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "service": "market-scanner"
+        "service": "market-scanner",
+        "arbitrage_service": "loaded"
     }
 
 @app.get("/quick-test")
@@ -72,9 +81,14 @@ async def quick_test():
         "settings_issues": validation.get("issues", []),
         "endpoints": {
             "authenticate": "/scanner/authenticate",
-            "scan_opportunities": "/scanner/scan-opportunities",
-            "ncaaf_events": "/scanner/ncaaf-events",
-            "settings": "/scanner/settings"
+            "scan_opportunities": "/scanner/scan-opportunities", 
+            "analyze_with_arbitrage": "/scanner/analyze-opportunities-with-arbitrage",
+            "settings": "/scanner/settings",
+            "arbitrage_tests": {
+                "test_calculation": "/arbitrage/test-arbitrage-calculation",
+                "test_commission": "/arbitrage/test-commission-scenarios", 
+                "test_sizing": "/arbitrage/test-bet-sizing-logic"
+            }
         }
     }
 
