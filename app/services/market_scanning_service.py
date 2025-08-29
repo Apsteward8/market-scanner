@@ -14,6 +14,66 @@ from app.services.prophetx_service import prophetx_service
 
 logger = logging.getLogger(__name__)
 
+# ProphetX Valid Odds Ladder
+PROPHETX_ODDS_LADDER = [
+    -25000, -24500, -24000, -23500, -23000, -22500, -22000, -21500, -21000, -20500,
+    -20000, -19500, -19000, -18500, -18000, -17500, -17000, -16500, -16000, -15500,
+    -15000, -14500, -14000, -13500, -13000, -12500, -12000, -11500, -11000, -10500,
+    -10000, -9750, -9500, -9250, -9000, -8750, -8500, -8250, -8000, -7750,
+    -7500, -7250, -7000, -6750, -6500, -6250, -6000, -5750, -5500, -5250,
+    -5000, -4900, -4800, -4700, -4600, -4500, -4400, -4300, -4200, -4100,
+    -4000, -3900, -3800, -3700, -3600, -3500, -3400, -3300, -3200, -3100,
+    -3000, -2900, -2800, -2750, -2700, -2600, -2500, -2400, -2300, -2250,
+    -2200, -2100, -2000, -1950, -1900, -1850, -1800, -1750, -1700, -1650,
+    -1600, -1550, -1500, -1450, -1400, -1350, -1300, -1250, -1200, -1150,
+    -1100, -1050, -1000, -990, -980, -970, -960, -950, -940, -930,
+    -920, -910, -900, -890, -880, -870, -860, -850, -840, -830,
+    -820, -810, -800, -790, -780, -770, -760, -750, -740, -730,
+    -720, -710, -700, -690, -680, -670, -660, -650, -640, -630,
+    -620, -610, -600, -590, -580, -570, -560, -550, -540, -530,
+    -520, -510, -500, -495, -490, -485, -480, -475, -470, -465,
+    -460, -455, -450, -445, -440, -435, -430, -425, -420, -415,
+    -410, -405, -400, -395, -390, -385, -380, -375, -370, -365,
+    -360, -355, -350, -345, -340, -335, -330, -325, -320, -315,
+    -310, -305, -300, -295, -290, -285, -280, -275, -270, -265,
+    -260, -255, -250, -245, -240, -235, -230, -225, -220, -215,
+    -210, -205, -200, -198, -196, -194, -192, -190, -188, -186,
+    -184, -182, -180, -178, -176, -174, -172, -170, -168, -166,
+    -164, -162, -160, -158, -156, -154, -152, -150, -148, -146,
+    -144, -142, -140, -138, -136, -134, -132, -130, -129, -128,
+    -127, -126, -125, -124, -123, -122, -121, -120, -119, -118,
+    -117, -116, -115, -114, -113, -112, -111, -110, -109, -108,
+    -107, -106, -105, -104, -103, -102, -101, -100,
+    100, 101, 102, 103, 104, 105, 106, 107, 108, 109,
+    110, 111, 112, 113, 114, 115, 116, 117, 118, 119,
+    120, 121, 122, 123, 124, 125, 126, 127, 128, 129,
+    130, 132, 134, 136, 138, 140, 142, 144, 146, 148,
+    150, 152, 154, 156, 158, 160, 162, 164, 166, 168,
+    170, 172, 174, 176, 178, 180, 182, 184, 186, 188,
+    190, 192, 194, 196, 198, 200, 205, 210, 215, 220,
+    225, 230, 235, 240, 245, 250, 255, 260, 265, 270,
+    275, 280, 285, 290, 295, 300, 305, 310, 315, 320,
+    325, 330, 335, 340, 345, 350, 355, 360, 365, 370,
+    375, 380, 385, 390, 395, 400, 405, 410, 415, 420,
+    425, 430, 435, 440, 445, 450, 455, 460, 465, 470,
+    475, 480, 485, 490, 495, 500, 510, 520, 530, 540,
+    550, 560, 570, 580, 590, 600, 610, 620, 630, 640,
+    650, 660, 670, 680, 690, 700, 710, 720, 730, 740,
+    750, 760, 770, 780, 790, 800, 810, 820, 830, 840,
+    850, 860, 870, 880, 890, 900, 910, 920, 930, 940,
+    950, 960, 970, 980, 990, 1000, 1050, 1100, 1150, 1200,
+    1250, 1300, 1350, 1400, 1450, 1500, 1550, 1600, 1650, 1700,
+    1750, 1800, 1850, 1900, 1950, 2000, 2100, 2200, 2250, 2300,
+    2400, 2500, 2600, 2700, 2750, 2800, 2900, 3000, 3100, 3200,
+    3300, 3400, 3500, 3600, 3700, 3800, 3900, 4000, 4100, 4200,
+    4300, 4400, 4500, 4600, 4700, 4800, 4900, 5000, 5250, 5500,
+    5750, 6000, 6250, 6500, 6750, 7000, 7250, 7500, 7750, 8000,
+    8250, 8500, 8750, 9000, 9250, 9500, 9750, 10000, 10500, 11000,
+    11500, 12000, 12500, 13000, 13500, 14000, 14500, 15000, 15500, 16000,
+    16500, 17000, 17500, 18000, 18500, 19000, 19500, 20000, 20500, 21000,
+    21500, 22000, 22500, 23000, 23500, 24000, 24500, 25000
+]
+
 @dataclass
 class SportEvent:
     """Represents a sport event from ProphetX"""
@@ -67,8 +127,8 @@ class MarketScanningService:
         self.ncaaf_tournament_id = "27653"
         
         # Scanning parameters from settings
-        self.min_stake_threshold = self.settings.min_stake_threshold  # $7500 -> $10000
-        self.min_individual_threshold = 2500.0  # New: both stake and value must be > $2500
+        self.min_stake_threshold = self.settings.min_stake_threshold  # $10000
+        self.min_individual_threshold = 2500.0  # Both stake and value must be > $2500
         self.undercut_improvement = self.settings.undercut_improvement  # 1 point
         self.commission_rate = self.settings.prophetx_commission_rate  # 3%
         
@@ -79,6 +139,50 @@ class MarketScanningService:
         self.main_line_categories = {"Game Lines"}
         self.main_line_types = {"moneyline", "spread", "total", "totals"}  # Added "totals" as backup
         
+    def _find_next_valid_odds(self, target_odds: int, better_for_bettor: bool = True) -> int:
+        """
+        Find the next valid odds on ProphetX's odds ladder
+        
+        Args:
+            target_odds: The odds we want to improve upon
+            better_for_bettor: True for better odds for bettor, False for worse odds
+            
+        Returns:
+            Next valid odds that's better/worse for the bettor
+        """
+        try:
+            # Find current position in odds ladder
+            if target_odds not in PROPHETX_ODDS_LADDER:
+                # If exact odds not found, find closest
+                closest_index = min(range(len(PROPHETX_ODDS_LADDER)), 
+                                  key=lambda i: abs(PROPHETX_ODDS_LADDER[i] - target_odds))
+            else:
+                closest_index = PROPHETX_ODDS_LADDER.index(target_odds)
+            
+            if better_for_bettor:
+                # Better for bettor means:
+                # - For negative odds: less negative (closer to 0) -> higher index
+                # - For positive odds: more positive (further from 0) -> higher index
+                new_index = closest_index + 1
+            else:
+                # Worse for bettor means:
+                # - For negative odds: more negative (further from 0) -> lower index  
+                # - For positive odds: less positive (closer to 0) -> lower index
+                new_index = closest_index - 1
+            
+            # Ensure we stay within bounds
+            new_index = max(0, min(len(PROPHETX_ODDS_LADDER) - 1, new_index))
+            
+            return PROPHETX_ODDS_LADDER[new_index]
+            
+        except Exception as e:
+            logger.warning(f"Error finding next valid odds for {target_odds}: {e}")
+            # Fallback logic
+            if better_for_bettor:
+                return target_odds + (1 if target_odds >= 0 else 1)
+            else:
+                return target_odds - (1 if target_odds >= 0 else 1)
+
     async def scan_for_opportunities(self) -> List[HighWagerOpportunity]:
         """
         Main scanning function - finds all high wager opportunities
@@ -134,174 +238,132 @@ class MarketScanningService:
         For each unique combination of (event_id, market_type, line_value, side), keep only
         the opportunity with the best odds for the bettor.
         """
-        # Group opportunities by unique line identifier
-        line_groups = {}
-        
-        for opp in opportunities:
-            # Create unique key for this line and side
-            line_key = (
-                opp.event_id,
-                opp.market_type,
-                opp.line_info,  # This includes spread value or total info
-                opp.available_side.split()[0] if ' ' in opp.available_side else opp.available_side  # Team name without odds
-            )
-            
-            if line_key not in line_groups:
-                line_groups[line_key] = []
-            line_groups[line_key].append(opp)
-        
-        # For each group, keep only the opportunity with the best odds
-        deduplicated = []
-        
-        for line_key, group_opportunities in line_groups.items():
-            if len(group_opportunities) == 1:
-                # Only one opportunity on this line, keep it
-                deduplicated.extend(group_opportunities)
-            else:
-                # Multiple opportunities on same line, keep the one with best odds
-                best_opportunity = self._find_best_odds_opportunity(group_opportunities)
-                if best_opportunity:
-                    deduplicated.append(best_opportunity)
-                    logger.info(f"Deduplicated {len(group_opportunities)} opportunities on {line_key}, kept best odds: {best_opportunity.our_proposed_odds:+d}")
-        
-        return deduplicated
-    
-    def _find_best_odds_opportunity(self, opportunities: List[HighWagerOpportunity]) -> Optional[HighWagerOpportunity]:
-        """Find the opportunity with the best odds for the bettor"""
         if not opportunities:
-            return None
-            
-        best_opp = opportunities[0]
+            return []
         
-        for opp in opportunities[1:]:
-            # For positive odds, higher is better for the bettor
-            # For negative odds, closer to 0 (less negative) is better for the bettor
-            if self._is_better_odds(opp.our_proposed_odds, best_opp.our_proposed_odds):
-                best_opp = opp
+        # Group by unique line identifier
+        grouped = {}
+        for opp in opportunities:
+            # Create unique key for this line/side combination
+            key = (opp.event_id, opp.market_type, opp.line_info, opp.available_side)
+            
+            if key not in grouped:
+                grouped[key] = opp
+            else:
+                # Keep the one with better odds for the bettor
+                current_odds = grouped[key].our_proposed_odds
+                new_odds = opp.our_proposed_odds
                 
-        return best_opp
-    
-    def _is_better_odds(self, odds1: int, odds2: int) -> bool:
-        """Determine if odds1 is better than odds2 for the bettor"""
-        # If both positive, higher is better
-        if odds1 > 0 and odds2 > 0:
-            return odds1 > odds2
-        # If both negative, less negative (closer to 0) is better
-        elif odds1 < 0 and odds2 < 0:
-            return odds1 > odds2  # -107 > -122
-        # If one positive and one negative, positive is generally better
-        else:
-            return odds1 > odds2
+                # Better odds for bettor:
+                # - For negative odds: less negative (higher value, e.g., -105 > -110)
+                # - For positive odds: more positive (higher value, e.g., +115 > +110)
+                if (current_odds < 0 and new_odds < 0 and new_odds > current_odds) or \
+                   (current_odds > 0 and new_odds > 0 and new_odds > current_odds):
+                    grouped[key] = opp
+        
+        return list(grouped.values())
     
     async def _get_upcoming_events(self) -> List[SportEvent]:
-        """Get upcoming NCAAF events in the next 24 hours"""
+        """Get upcoming NCAAF events in the scan window"""
         try:
-            # Get sport events from ProphetX (uses 1-hour cache)
-            response = await prophetx_service.get_sport_events(self.ncaaf_tournament_id)
-            raw_events = response.get('data', {}).get('sport_events', [])
-            
-            # Filter for events in our time window
+            # Get current time and scan window end
             now = datetime.now(timezone.utc)
-            scan_end_time = now + timedelta(hours=self.scan_window_hours)
+            scan_end = now + timedelta(hours=self.scan_window_hours)
             
-            upcoming_events = []
+            logger.info(f"🗓️  Fetching NCAAF events from {now.strftime('%Y-%m-%d %H:%M UTC')} to {scan_end.strftime('%Y-%m-%d %H:%M UTC')}")
             
-            for event in raw_events:
+            # Fetch events from ProphetX using the correct method
+            response = await prophetx_service.get_sport_events(self.ncaaf_tournament_id)
+            events_data = response.get('data', {}).get('sport_events', [])
+            
+            if not events_data:
+                logger.warning("No sport events data returned")
+                return []
+            
+            events = []
+            for event_dict in events_data:
                 try:
-                    # Parse scheduled time
-                    scheduled_str = event.get('scheduled', '')
-                    scheduled_time = datetime.fromisoformat(scheduled_str.replace('Z', '+00:00'))
+                    # Parse the scheduled time
+                    scheduled_time_str = event_dict.get('scheduled', '')
+                    if scheduled_time_str:
+                        scheduled_time = datetime.fromisoformat(scheduled_time_str.replace('Z', '+00:00'))
+                    else:
+                        logger.warning(f"Event {event_dict.get('event_id')} has no scheduled time")
+                        continue
                     
-                    # Check if event is in our scan window
-                    if now <= scheduled_time <= scan_end_time:
-                        # Extract team information
-                        competitors = event.get('competitors', [])
-                        home_team = ""
-                        away_team = ""
+                    # Only include events in our scan window
+                    if not (now <= scheduled_time <= scan_end):
+                        logger.debug(f"Skipping event outside time window: {event_dict.get('display_name')} at {scheduled_time}")
+                        continue
+                    
+                    # Extract team names from competitors
+                    competitors = event_dict.get('competitors', [])
+                    home_team = ""
+                    away_team = ""
+                    
+                    for competitor in competitors:
+                        side = competitor.get('side', '').lower()
+                        team_name = competitor.get('display_name', competitor.get('name', ''))
                         
-                        for competitor in competitors:
-                            if competitor.get('side') == 'home':
-                                home_team = competitor.get('display_name', '')
-                            elif competitor.get('side') == 'away':
-                                away_team = competitor.get('display_name', '')
-                        
-                        sport_event = SportEvent(
-                            event_id=str(event.get('event_id', '')),
-                            display_name=event.get('display_name', ''),
-                            scheduled_time=scheduled_time,
-                            home_team=home_team,
-                            away_team=away_team,
-                            status=event.get('status', ''),
-                            tournament_id=str(event.get('tournament_id', '')),
-                            tournament_name=event.get('tournament_name', '')
-                        )
-                        
-                        upcoming_events.append(sport_event)
-                        
+                        if side == 'home':
+                            home_team = team_name
+                        elif side == 'away':
+                            away_team = team_name
+                    
+                    # Create display name if not provided
+                    display_name = event_dict.get('display_name', f"{away_team} @ {home_team}")
+                    
+                    event = SportEvent(
+                        event_id=str(event_dict.get('event_id', '')),
+                        display_name=display_name,
+                        scheduled_time=scheduled_time,
+                        home_team=home_team,
+                        away_team=away_team,
+                        status=event_dict.get('status', ''),
+                        tournament_id=str(event_dict.get('tournament_id', self.ncaaf_tournament_id)),
+                        tournament_name=event_dict.get('tournament_name', 'NCAAF')
+                    )
+                    events.append(event)
+                    
                 except Exception as e:
-                    logger.warning(f"Error parsing event {event.get('display_name', 'Unknown')}: {e}")
+                    logger.warning(f"Error parsing event {event_dict.get('event_id', 'unknown')}: {e}")
                     continue
             
-            return upcoming_events
+            logger.info(f"📅 Found {len(events)} events in scan window")
+            return events
             
         except Exception as e:
-            logger.error(f"Error getting upcoming events: {e}")
+            logger.error(f"Error fetching upcoming events: {e}", exc_info=True)
             return []
     
-    async def _get_market_data(self, event_ids: List[str]) -> Dict[str, Any]:
+    async def _get_market_data(self, event_ids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
         """Get market data for multiple events"""
         try:
-            if not event_ids:
-                return {}
-                
-            # Batch event IDs to avoid overly large requests
-            batch_size = 10  # Process 10 events at a time
-            all_market_data = {}
-            
-            for i in range(0, len(event_ids), batch_size):
-                batch_ids = event_ids[i:i + batch_size]
-                
-                logger.info(f"📊 Fetching market data for batch {i//batch_size + 1} ({len(batch_ids)} events)")
-                
-                response = await prophetx_service.get_multiple_markets(batch_ids)
-                batch_data = response.get('data', {})
-                
-                all_market_data.update(batch_data)
-                
-                # Small delay between batches to be API-friendly
-                if i + batch_size < len(event_ids):
-                    await asyncio.sleep(1)
-            
-            return all_market_data
-            
+            market_data = await prophetx_service.get_multiple_markets(event_ids)
+            return market_data.get('data', {})
         except Exception as e:
-            logger.error(f"Error getting market data: {e}")
+            logger.error(f"Error fetching market data: {e}", exc_info=True)
             return {}
     
     async def _find_high_wager_opportunities(self, events: List[SportEvent], 
-                                           market_data: Dict[str, Any]) -> List[HighWagerOpportunity]:
-        """Find high wager opportunities in the market data"""
-        opportunities = []
-        
-        logger.info(f"Processing {len(events)} events for opportunities")
+                                          market_data: Dict[str, List[Dict[str, Any]]]) -> List[HighWagerOpportunity]:
+        """Find high wager opportunities across all events"""
+        all_opportunities = []
         
         for event in events:
-            logger.info(f"Processing event: {event.display_name} (ID: {event.event_id})")
-            
-            event_market_data = market_data.get(event.event_id, [])
-            if not event_market_data:
-                logger.warning(f"No market data found for event {event.event_id}")
+            event_markets = market_data.get(event.event_id, [])
+            if not event_markets:
+                logger.debug(f"No market data for event {event.display_name}")
                 continue
-                
-            logger.info(f"Found {len(event_market_data)} markets for event {event.event_id}")
             
-            event_opportunities = await self._scan_event_markets(event, event_market_data)
-            logger.info(f"Found {len(event_opportunities)} opportunities for event {event.display_name}")
+            opportunities = await self._scan_event_markets(event, event_markets)
+            all_opportunities.extend(opportunities)
             
-            opportunities.extend(event_opportunities)
+            if opportunities:
+                logger.info(f"🎯 Event {event.display_name}: Found {len(opportunities)} opportunities")
         
-        logger.info(f"Total opportunities found across all events: {len(opportunities)}")
-        return opportunities
+        logger.info(f"📊 Total opportunities found across all events: {len(all_opportunities)}")
+        return all_opportunities
     
     async def _scan_event_markets(self, event: SportEvent, 
                                 markets: List[Dict[str, Any]]) -> List[HighWagerOpportunity]:
@@ -341,7 +403,7 @@ class MarketScanningService:
                             value = float(selection.get('value', 0) or 0)
                             combined = stake + value
 
-                            # Use both the combined and individual thresholds (you already defined min_individual_threshold)
+                            # Use both the combined and individual thresholds
                             if (
                                 combined >= self.min_stake_threshold
                                 and stake >= self.min_individual_threshold
@@ -385,7 +447,7 @@ class MarketScanningService:
         """Create an opportunity from identified high stakes"""
         
         try:
-            # The selection with available liquidity
+            # The selection with available liquidity (created by the large bet)
             available_side = liquidity_selection.get('display_name', '')
             available_odds = int(liquidity_selection.get('odds', 0))
             available_liquidity = float(liquidity_selection.get('value', 0))
@@ -395,11 +457,14 @@ class MarketScanningService:
             large_bet_value = float(liquidity_selection.get('value', 0))
             combined_size = large_bet_stake + large_bet_value
             
-            # The large bettor got the opposite odds of what's available
+            # CORRECTED LOGIC: The large bettor bet the OPPOSITE side of available liquidity
+            # If available_side is "Charlotte +140", large bettor bet "vs Charlotte -140"
             large_bet_odds = -available_odds if available_odds > 0 else abs(available_odds)
+            large_bet_side = self._get_opposite_side(available_side, market.get('type', ''))
             
-            # Calculate our undercut odds (better for the bettor)
-            our_proposed_odds = self._calculate_undercut_odds(large_bet_odds)
+            # OUR STRATEGY: Bet the same side as large bettor, but at worse odds for us
+            # This creates better odds for the other side, so we get filled first
+            our_proposed_odds = self._find_next_valid_odds(large_bet_odds, better_for_bettor=False)
             
             # Extract line information for spreads and totals
             line_info = self._extract_line_info(market, available_side)
@@ -413,15 +478,15 @@ class MarketScanningService:
                 market_name=market.get('category_name', ''),
                 market_type=market.get('type', ''),
                 line_info=line_info,
-                large_bet_side=self._get_opposite_side(available_side, market.get('type', '')),
+                large_bet_side=large_bet_side,  # Same side as large bettor
                 large_bet_stake_amount=large_bet_stake,
                 large_bet_liquidity_value=large_bet_value,
                 large_bet_combined_size=combined_size,
-                large_bet_odds=large_bet_odds,
-                available_side=available_side,
-                available_odds=available_odds,
+                large_bet_odds=large_bet_odds,  # What large bettor actually got
+                available_side=available_side,  # The liquidity created by large bet
+                available_odds=available_odds,  # The odds available to other bettors
                 available_liquidity_amount=available_liquidity,
-                our_proposed_odds=our_proposed_odds
+                our_proposed_odds=our_proposed_odds  # Worse odds for us = better for others
             )
             
         except Exception as e:
@@ -429,13 +494,9 @@ class MarketScanningService:
             return None
     
     def _calculate_undercut_odds(self, original_odds: int) -> int:
-        """Calculate our undercut odds to offer better value"""
-        if original_odds > 0:
-            # For positive odds, reduce to make it better for the bettor
-            return max(original_odds - self.undercut_improvement, -110)  # Don't go below -110
-        else:
-            # For negative odds, make less negative (better for bettor)
-            return min(original_odds + self.undercut_improvement, 110)  # Don't go above +110
+        """Calculate our undercut odds using ProphetX odds ladder - DEPRECATED"""
+        # This method is deprecated - use _find_next_valid_odds instead
+        return self._find_next_valid_odds(original_odds, better_for_bettor=True)
     
     def _extract_line_info(self, market: Dict[str, Any], selection_side: str) -> str:
         """Extract line information for spreads and totals"""
@@ -450,64 +511,55 @@ class MarketScanningService:
                 elif line_val < 0:
                     return str(line_val)
                 else:
-                    return "PK"
+                    return "0"
             else:
-                # Fallback: extract from selection name
-                if '+' in selection_side:
-                    return selection_side.split()[-1]
-                elif '-' in selection_side and selection_side.count('-') > selection_side.count(' at '):
-                    return selection_side.split()[-1]
-                else:
-                    return "PK"
-                    
+                # Try to extract from selection name
+                if 'spread' in selection_side.lower() or any(char in selection_side for char in ['+', '-']):
+                    return selection_side
+                return "Unknown Spread"
+        
         elif market_type in ['total', 'totals']:
-            # For totals, check if we have line info from market_lines structure
+            # For totals, show Over/Under with line value
             if 'line_value' in market:
                 line_val = market.get('line_value', 0)
-                if 'Over' in selection_side:
-                    return f"Over {line_val}"
-                elif 'Under' in selection_side:
-                    return f"Under {line_val}"
-                else:
-                    return f"Total {line_val}"
+                over_under = "Over" if "over" in selection_side.lower() else "Under"
+                return f"{over_under} {line_val}"
             else:
-                # Fallback: extract from selection name
-                if 'Over' in selection_side or 'Under' in selection_side:
-                    parts = selection_side.split()
-                    for i, part in enumerate(parts):
-                        if part in ['Over', 'Under'] and i + 1 < len(parts):
-                            return f"{part} {parts[i+1]}"
-                return "Total"
-                
+                # Try to extract from selection name
+                return selection_side
+        
         else:
-            # Moneyline - no additional line info needed
-            return ""
+            # For moneyline, just return the team name
+            return selection_side
     
     def _get_opposite_side(self, available_side: str, market_type: str) -> str:
-        """Get the opposite side of a bet based on market type"""
+        """Determine the opposite side that placed the large bet"""
+        market_type = market_type.lower()
         
-        if market_type.lower() == 'spread':
-            # For spreads, flip the sign
+        if market_type == 'moneyline':
+            # For moneylines, it's the other team
+            return f"vs {available_side}"
+        
+        elif market_type == 'spread':
+            # For spreads, it's the other side of the spread
             if '+' in available_side:
                 return available_side.replace('+', '-')
             elif '-' in available_side:
                 return available_side.replace('-', '+')
             else:
-                return "Opposite Side"
-                
-        elif market_type.lower() == 'total':
-            # For totals, flip Over/Under
-            if 'Over' in available_side:
-                return available_side.replace('Over', 'Under')
-            elif 'Under' in available_side:
-                return available_side.replace('Under', 'Over')
+                return f"Opposite of {available_side}"
+        
+        elif market_type in ['total', 'totals']:
+            # For totals, it's Over vs Under
+            if 'over' in available_side.lower():
+                return available_side.replace('Over', 'Under').replace('over', 'Under')
+            elif 'under' in available_side.lower():
+                return available_side.replace('Under', 'Over').replace('under', 'Over')
             else:
-                return "Opposite Total"
-                
-        else:
-            # For moneylines, this would need team name mapping
-            # This is more complex and would require parsing team names
-            return "Opposite Side"
+                return f"Opposite of {available_side}"
+        
+        return f"Opposite of {available_side}"
 
-# Global instance
+
+# Create global service instance
 market_scanning_service = MarketScanningService()

@@ -29,10 +29,10 @@ class Settings(BaseSettings):
     # =============================================================================
     min_stake_threshold: float = Field(10000.0, description="Minimum combined stake + value to follow")
     min_individual_threshold: float = Field(2500.0, description="Minimum individual stake and value required")
-    undercut_improvement: int = Field(1, description="Odds improvement points")
+    undercut_improvement: int = Field(1, description="Odds improvement points (deprecated - now uses odds ladder)")
     
     # =============================================================================
-    # Risk Management
+    # Risk Management Settings
     # =============================================================================
     max_exposure_total: float = Field(10000.0, description="Maximum total portfolio exposure")
     
@@ -44,102 +44,116 @@ class Settings(BaseSettings):
     request_timeout_seconds: int = Field(30, description="API request timeout in seconds")
     
     # =============================================================================
-    # Database and Logging
+    # Database and Logging Settings
     # =============================================================================
-    database_url: str = Field("sqlite:///./market_scanner.db", description="Database connection string")
+    database_url: str = Field("sqlite:///./market_scanner.db", description="Database connection URL")
     log_level: str = Field("INFO", description="Logging level")
-    save_scan_history: bool = Field(True, description="Save scan history to database")
+    save_scan_history: bool = Field(True, description="Whether to save scan history to database")
     
     # =============================================================================
     # ProphetX Commission Settings
     # =============================================================================
-    prophetx_commission_rate: float = Field(0.03, description="ProphetX commission rate (3%)")
+    prophetx_commission_rate: float = Field(0.03, description="ProphetX commission rate on winning bets")
     break_even_buffer: float = Field(0.01, description="Buffer above break-even for profitability")
     
-    model_config = {
-        "env_file": ".env",
-        "env_file_encoding": "utf-8",
-        "case_sensitive": False,
-        "extra": "ignore"
-    }
+    # =============================================================================
+    # Computed Properties
+    # =============================================================================
+    @property
+    def production_base_url(self) -> str:
+        """ProphetX production API base URL"""
+        return "https://api.prophetx.com"
     
     @property
-    def is_production_betting(self) -> bool:
-        """Check if we're betting in production environment"""
-        return self.prophetx_betting_environment.lower() == "production"
-    
-    @property
-    def betting_access_key(self) -> str:
-        """Get the appropriate access key for betting environment"""
-        if self.is_production_betting:
-            return self.prophetx_production_access_key
-        else:
-            return self.prophetx_sandbox_access_key
-    
-    @property
-    def betting_secret_key(self) -> str:
-        """Get the appropriate secret key for betting environment"""  
-        if self.is_production_betting:
-            return self.prophetx_production_secret_key
-        else:
-            return self.prophetx_sandbox_secret_key
+    def sandbox_base_url(self) -> str:
+        """ProphetX sandbox API base URL"""
+        return "https://api-staging.prophetx.com"
     
     @property
     def betting_base_url(self) -> str:
-        """Get the appropriate base URL for betting environment"""
-        if self.is_production_betting:
-            return "https://cash.api.prophetx.co"
+        """Base URL for betting operations"""
+        return self.production_base_url if self.prophetx_betting_environment == "production" else self.sandbox_base_url
+    
+    @property
+    def data_base_url(self) -> str:
+        """Base URL for data operations (always production)"""
+        return self.production_base_url
+    
+    @property
+    def betting_credentials(self) -> tuple[str, str]:
+        """Get betting credentials based on environment"""
+        if self.prophetx_betting_environment == "production":
+            return (self.prophetx_production_access_key, self.prophetx_production_secret_key)
         else:
-            return "https://api-ss-sandbox.betprophet.co"
+            return (self.prophetx_sandbox_access_key, self.prophetx_sandbox_secret_key)
+    
+    @property
+    def data_credentials(self) -> tuple[str, str]:
+        """Get data credentials (always production)"""
+        return (self.prophetx_production_access_key, self.prophetx_production_secret_key)
     
     def validate_settings(self) -> dict:
-        """Validate critical settings and return status"""
+        """Validate all settings and return validation results"""
         issues = []
         
-        # Check required API keys
-        if not self.prophetx_production_access_key:
-            issues.append("Missing PROPHETX_PRODUCTION_ACCESS_KEY")
-        if not self.prophetx_production_secret_key:
-            issues.append("Missing PROPHETX_PRODUCTION_SECRET_KEY")
-            
-        # Check betting environment keys
-        if self.is_production_betting:
-            if not self.prophetx_production_access_key or not self.prophetx_production_secret_key:
-                issues.append("Production betting enabled but missing production credentials")
-        else:
-            if not self.prophetx_sandbox_access_key or not self.prophetx_sandbox_secret_key:
-                issues.append("Sandbox betting enabled but missing sandbox credentials")
+        # Check API credentials
+        if not self.prophetx_production_access_key or self.prophetx_production_access_key == "your_key_here":
+            issues.append("Missing or invalid production access key")
+        
+        if not self.prophetx_production_secret_key or self.prophetx_production_secret_key == "your_secret_here":
+            issues.append("Missing or invalid production secret key")
+        
+        if not self.prophetx_sandbox_access_key or self.prophetx_sandbox_access_key == "your_sandbox_access_key_here":
+            issues.append("Missing or invalid sandbox access key")
+        
+        if not self.prophetx_sandbox_secret_key or self.prophetx_sandbox_secret_key == "your_sandbox_secret_key_here":
+            issues.append("Missing or invalid sandbox secret key")
+        
+        # Check environment setting
+        if self.prophetx_betting_environment not in ["production", "sandbox"]:
+            issues.append(f"Invalid betting environment: {self.prophetx_betting_environment}")
         
         # Check thresholds
         if self.min_stake_threshold < 1000:
-            issues.append("MIN_STAKE_THRESHOLD should be at least $1000 for meaningful signals")
-            
-        if self.prophetx_commission_rate <= 0 or self.prophetx_commission_rate >= 0.1:
-            issues.append("PROPHETX_COMMISSION_RATE should be between 0 and 10%")
+            issues.append(f"Min stake threshold too low: ${self.min_stake_threshold}")
+        
+        if self.min_individual_threshold < 100:
+            issues.append(f"Min individual threshold too low: ${self.min_individual_threshold}")
+        
+        if self.min_individual_threshold * 2 > self.min_stake_threshold:
+            issues.append("Individual thresholds are too high compared to combined threshold")
+        
+        # Check risk settings
+        if self.max_exposure_total < 1000:
+            issues.append(f"Max exposure too low: ${self.max_exposure_total}")
+        
+        # Check commission rate
+        if not (0 <= self.prophetx_commission_rate <= 0.5):
+            issues.append(f"Invalid commission rate: {self.prophetx_commission_rate}")
         
         return {
             "valid": len(issues) == 0,
             "issues": issues,
-            "environment": {
-                "data_fetching": "production",
-                "betting": self.prophetx_betting_environment,
-                "commission_rate": f"{self.prophetx_commission_rate*100:.1f}%",
-                "min_threshold": f"${self.min_stake_threshold:,.0f}"
+            "settings_summary": {
+                "betting_environment": self.prophetx_betting_environment,
+                "min_combined_threshold": self.min_stake_threshold,
+                "min_individual_threshold": self.min_individual_threshold,
+                "max_exposure": self.max_exposure_total,
+                "commission_rate": f"{self.prophetx_commission_rate:.1%}"
             }
         }
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
+
 
 # Global settings instance
-_settings: Optional[Settings] = None
+_settings = None
 
 def get_settings() -> Settings:
-    """Get application settings (singleton pattern)"""
+    """Get the global settings instance"""
     global _settings
     if _settings is None:
         _settings = Settings()
-    return _settings
-
-def reload_settings() -> Settings:
-    """Reload settings from environment"""
-    global _settings
-    _settings = Settings()
     return _settings
