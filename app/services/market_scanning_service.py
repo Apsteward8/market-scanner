@@ -606,12 +606,25 @@ class MarketScanningService:
         market_type = market_type.lower()
         
         if market_type == 'moneyline':
-            # For moneylines, if available_side matches one team, return the other
+            # For moneylines, if available_side matches one team, return the other team directly
+            # No "vs" prefix needed - just the team name
             if home_team.lower() in available_side.lower():
-                return f"vs {away_team}"
+                return away_team
             elif away_team.lower() in available_side.lower():
-                return f"vs {home_team}"
+                return home_team
             else:
+                # Fallback - try to extract team name from available_side and find opposite
+                # Remove any odds info (like "+140") to get clean team name
+                import re
+                team_match = re.match(r'^(.+?)\s*[+-]\d+', available_side)
+                if team_match:
+                    clean_team_name = team_match.group(1).strip()
+                    if home_team.lower() in clean_team_name.lower():
+                        return away_team
+                    elif away_team.lower() in clean_team_name.lower():
+                        return home_team
+                
+                # Last fallback
                 return f"vs {available_side}"
         
         elif market_type == 'spread':
