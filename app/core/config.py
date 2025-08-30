@@ -62,12 +62,12 @@ class Settings(BaseSettings):
     @property
     def production_base_url(self) -> str:
         """ProphetX production API base URL"""
-        return "https://api.prophetx.com"
+        return "https://cash.api.prophetx.co"
     
     @property
     def sandbox_base_url(self) -> str:
         """ProphetX sandbox API base URL"""
-        return "https://api-staging.prophetx.com"
+        return "https://api-ss-sandbox.betprophet.co"
     
     @property
     def betting_base_url(self) -> str:

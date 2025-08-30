@@ -2,6 +2,9 @@
 """
 ProphetX Service for Market Scanner
 Handles authentication and API calls for fetching games and market data
+DUAL ENVIRONMENT SUPPORT:
+- Data operations (market scanning) → Production environment
+- Betting operations → Configurable environment (sandbox/production)
 """
 
 import httpx
@@ -11,7 +14,6 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 import logging
 from dataclasses import dataclass
-import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -36,18 +38,31 @@ class BalanceInfo:
     retrieved_at: datetime
 
 class ProphetXService:
-    """ProphetX API service for market scanning"""
+    """ProphetX API service for market scanning with dual environment support"""
     
     def __init__(self):
         from app.core.config import get_settings
         self.settings = get_settings()
         
-        # API Configuration - Always use production for data fetching
-        self.base_url = "https://cash.api.prophetx.co"
+        # DUAL ENVIRONMENT SETUP - FIXED
+        # Data operations (scanning, market data) - Always Production
+        self.data_base_url = self.settings.data_base_url
+        self.data_access_key, self.data_secret_key = self.settings.data_credentials
         
-        # Use production credentials for data fetching
-        self.access_key = self.settings.prophetx_production_access_key
-        self.secret_key = self.settings.prophetx_production_secret_key
+        # Betting operations - Configurable (sandbox/production)  
+        self.betting_base_url = self.settings.betting_base_url
+        self.betting_access_key, self.betting_secret_key = self.settings.betting_credentials
+        
+        # For backwards compatibility with existing code
+        self.base_url = self.data_base_url  # Default to data URL for most calls
+        self.access_key = self.data_access_key
+        self.secret_key = self.data_secret_key
+        
+        # Environment info
+        self.data_env = "production"
+        self.betting_env = self.settings.prophetx_betting_environment
+        
+        logger.info(f"🔧 ProphetX environments: Data={self.data_env}, Betting={self.betting_env}")
         
         # Authentication state
         self.access_token: Optional[str] = None
@@ -63,13 +78,15 @@ class ProphetXService:
         self.client = httpx.AsyncClient(timeout=30.0)
         
     async def authenticate(self) -> Dict[str, Any]:
-        """Authenticate with ProphetX API using production credentials"""
-        logger.info("🔐 Authenticating with ProphetX (Production for data fetching)...")
+        """Authenticate with ProphetX API - authenticate both environments"""
+        logger.info(f"🔐 Authenticating with ProphetX environments...")
         
-        url = f"{self.base_url}/partner/auth/login"
+        # For simplicity, authenticate with production for data operations
+        # This maintains compatibility with existing scanning functionality
+        url = f"{self.data_base_url}/partner/auth/login"
         payload = {
-            "access_key": self.access_key,
-            "secret_key": self.secret_key
+            "access_key": self.data_access_key,
+            "secret_key": self.data_secret_key
         }
         
         try:
@@ -93,7 +110,8 @@ class ProphetXService:
                     return {
                         "success": True,
                         "access_expires_at": access_expire_dt.isoformat(),
-                        "refresh_expires_at": datetime.fromtimestamp(self.refresh_expire_time, tz=timezone.utc).isoformat()
+                        "refresh_expires_at": datetime.fromtimestamp(self.refresh_expire_time, tz=timezone.utc).isoformat(),
+                        "environment": f"{self.data_env} (primary)"
                     }
                 else:
                     raise Exception("Missing tokens in response")
@@ -129,7 +147,7 @@ class ProphetXService:
             
         logger.info("🔄 Refreshing ProphetX access token...")
         
-        url = f"{self.base_url}/partner/auth/refresh"
+        url = f"{self.data_base_url}/partner/auth/refresh"  # Use data environment for refresh
         payload = {"refresh_token": self.refresh_token}
         
         try:
@@ -143,17 +161,48 @@ class ProphetXService:
                 self.access_expire_time = token_data.get('access_expire_time')
                 
                 logger.info("✅ Token refresh successful!")
-                return {"success": True, "refreshed": True}
+                return {"success": True}
             else:
-                # Refresh failed, re-authenticate
-                logger.warning("Token refresh failed, re-authenticating...")
-                await self.authenticate()
-                return {"success": True, "refreshed": True}
+                logger.warning("🔄 Refresh failed, re-authenticating...")
+                return await self.authenticate()
                 
         except Exception as e:
-            logger.error(f"Token refresh error: {e}, re-authenticating...")
-            await self.authenticate()
-            return {"success": True, "refreshed": True}
+            logger.error(f"❌ Error refreshing token: {e}")
+            return await self.authenticate()
+    
+    async def authenticate_betting_environment(self) -> Dict[str, str]:
+        """Get authentication headers specifically for betting operations"""
+        logger.info(f"🎯 Authenticating for betting environment ({self.betting_env})...")
+        
+        url = f"{self.betting_base_url}/partner/auth/login"
+        payload = {
+            "access_key": self.betting_access_key,
+            "secret_key": self.betting_secret_key
+        }
+        
+        try:
+            response = await self.client.post(url, json=payload)
+            
+            if response.status_code == 200:
+                data = response.json()
+                token_data = data.get('data', {})
+                
+                betting_token = token_data.get('access_token')
+                
+                if betting_token:
+                    logger.info(f"✅ Betting environment authenticated: {self.betting_env}")
+                    return {
+                        'Authorization': f'Bearer {betting_token}',
+                        'Content-Type': 'application/json'
+                    }
+                else:
+                    raise Exception("Missing betting token in response")
+            else:
+                raise Exception(f"HTTP {response.status_code}: {response.text}")
+                
+        except Exception as e:
+            logger.error(f"❌ Betting authentication failed: {e}")
+            raise Exception(f"Betting authentication failed: {e}")
     
     async def get_sport_events(self, tournament_id: str, use_cache: bool = True) -> Dict[str, Any]:
         """
@@ -208,23 +257,16 @@ class ProphetXService:
             raise Exception(f"Failed to fetch sport events: {e}")
     
     async def get_multiple_markets(self, event_ids: List[str]) -> Dict[str, Any]:
-        """
-        Get market data for multiple events
-        
-        Args:
-            event_ids: List of event IDs to fetch markets for
-            
-        Returns:
-            Dict with market data for each event
-        """
+        """Get market data for multiple events from production data environment"""
         if not event_ids:
             return {"data": {}}
             
-        logger.info(f"📊 Fetching market data for {len(event_ids)} events...")
+        logger.info(f"📊 Fetching market data for {len(event_ids)} events from production...")
         
-        url = f"{self.base_url}/partner/v2/mm/get_multiple_markets"
+        # FIXED: Use data environment for market data
+        url = f"{self.data_base_url}/partner/v2/mm/get_multiple_markets"
         params = {"event_ids": ",".join(event_ids)}
-        headers = await self.get_auth_headers()
+        headers = await self.get_auth_headers()  # This will use the data environment token
         
         try:
             response = await self.client.get(url, params=params, headers=headers)
@@ -245,6 +287,304 @@ class ProphetXService:
             logger.error(f"❌ Error fetching market data: {e}")
             raise Exception(f"Failed to fetch market data: {e}")
     
+    async def get_account_balance(self, force_refresh: bool = False) -> Dict[str, Any]:
+        """Get current account balance from betting environment"""
+        try:
+            logger.info("💰 Fetching account balance from betting environment...")
+            
+            # Make sure we're authenticated
+            if not self.is_authenticated:
+                auth_result = await self.authenticate()
+                if not auth_result.get("success"):
+                    return {
+                        "success": False,
+                        "error": "Failed to authenticate with ProphetX",
+                        "auth_error": auth_result.get("error")
+                    }
+            
+            # FIXED: Use betting environment for balance checks
+            url = f"{self.betting_base_url}/partner/mm/get_balance"
+            headers = await self.authenticate_betting_environment()  # Get betting environment auth
+            
+            response = await self.client.get(url, headers=headers, timeout=30.0)
+            
+            if response.status_code != 200:
+                return {
+                    "success": False,
+                    "error": f"Balance API returned status {response.status_code}",
+                    "response_text": response.text[:500] if response.text else None
+                }
+            
+            data = response.json()
+            balance_data = data.get('data', {})
+            
+            # Parse balance information properly
+            available_balance = float(balance_data.get('balance', 0))
+            unmatched_wager_balance = float(balance_data.get('unmatched_wager_balance', 0))
+            total_balance = available_balance + unmatched_wager_balance
+            
+            balance_info = BalanceInfo(
+                total=total_balance,
+                available=available_balance,
+                unmatched_wager_balance=unmatched_wager_balance,
+                unmatched_wager_balance_status=balance_data.get('unmatched_wager_balance_status', 'unknown'),
+                unmatched_wager_last_synced_at=balance_data.get('unmatched_wager_last_synced_at', ''),
+                retrieved_at=datetime.now(timezone.utc)
+            )
+            
+            logger.info(f"✅ Balance retrieved: ${balance_info.available:.2f} available, ${balance_info.unmatched_wager_balance:.2f} tied up in unmatched bets")
+            
+            return {
+                "success": True,
+                "data": {
+                    "total": balance_info.total,
+                    "available": balance_info.available,
+                    "unmatched_wager_balance": balance_info.unmatched_wager_balance,
+                    "unmatched_status": balance_info.unmatched_wager_balance_status,
+                    "last_synced": balance_info.unmatched_wager_last_synced_at,
+                    "retrieved_at": balance_info.retrieved_at.isoformat()
+                },
+                "balance_info": balance_info
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting account balance: {e}")
+            return {
+                "success": False,
+                "error": f"Balance check exception: {str(e)}"
+            }
+
+    async def check_sufficient_funds(self, required_amount: float, safety_buffer: float = 10.0) -> Dict[str, Any]:
+        """Check if we have sufficient funds for a wager"""
+        try:
+            # Get current balance
+            balance_result = await self.get_account_balance()
+            
+            if not balance_result.get("success"):
+                return {
+                    "sufficient_funds": False,
+                    "error": f"Failed to get balance: {balance_result.get('error')}"
+                }
+            
+            balance_data = balance_result["data"]
+            available_balance = balance_data["available"]
+            total_required = required_amount + safety_buffer
+            
+            sufficient = available_balance >= total_required
+            
+            logger.info(f"💰 Funds check: ${available_balance:.2f} available, ${total_required:.2f} required (${required_amount:.2f} + ${safety_buffer:.2f} buffer)")
+            logger.info(f"   📊 Additional info: ${balance_data['unmatched_wager_balance']:.2f} tied up in unmatched bets")
+            
+            if sufficient:
+                logger.info("✅ FUNDS CHECK PASSED: Sufficient funds available")
+            else:
+                logger.warning(f"❌ FUNDS CHECK FAILED: Need ${total_required - available_balance:.2f} more")
+            
+            return {
+                "sufficient_funds": sufficient,
+                "total_balance": balance_data["total"],
+                "available_balance": available_balance,
+                "unmatched_balance": balance_data["unmatched_wager_balance"],
+                "required_amount": required_amount,
+                "safety_buffer": safety_buffer,
+                "total_required": total_required,
+                "remaining_after_wager": available_balance - required_amount if sufficient else None,
+                "shortfall": total_required - available_balance if not sufficient else 0
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error checking sufficient funds: {e}")
+            return {
+                "sufficient_funds": False,
+                "error": f"Funds check exception: {str(e)}"
+            }
+    
+    async def place_bet(self, line_id: str, odds: int, stake: float, external_id: str) -> Dict[str, Any]:
+        """
+        Place bet using correct endpoint and betting environment
+        FIXED: Uses /partner/mm/place_wager (not place_bet) and betting environment
+        """
+        try:
+            logger.info(f"🎯 ProphetX: Placing bet on line {line_id} @ {odds:+d} for ${stake} in {self.betting_env}")
+            
+            # Make sure we're authenticated
+            if not self.is_authenticated:
+                auth_result = await self.authenticate()
+                if not auth_result.get("success"):
+                    return {
+                        "success": False,
+                        "error": "Failed to authenticate with ProphetX"
+                    }
+            
+            # FIXED: Use correct endpoint and betting environment
+            url = f"{self.betting_base_url}/partner/mm/place_wager"
+            headers = await self.authenticate_betting_environment()  # Get betting environment auth
+            
+            bet_data = {
+                "line_id": line_id,
+                "odds": odds,
+                "stake": stake,
+                "external_id": external_id
+            }
+            
+            logger.info(f"   📤 Betting API call: {url}")
+            logger.info(f"   📋 Bet data: line_id={line_id}, odds={odds:+d}, stake=${stake}, external_id={external_id}")
+            
+            response = await self.client.post(url, headers=headers, json=bet_data, timeout=30.0)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get("success"):
+                    bet_info = data.get("data", {})
+                    logger.info(f"✅ Bet placed successfully: ProphetX ID {bet_info.get('bet_id')}")
+                    
+                    return {
+                        "success": True,
+                        "bet_id": bet_info.get("bet_id"),
+                        "prophetx_bet_id": bet_info.get("bet_id"),
+                        "external_id": external_id,
+                        "status": bet_info.get("status", "placed"),
+                        "odds": odds,
+                        "stake": stake,
+                        "line_id": line_id,
+                        "environment": self.betting_env
+                    }
+                else:
+                    logger.error(f"   ❌ ProphetX returned success=false: {data.get('error', 'Unknown error')}")
+                    return {
+                        "success": False,
+                        "error": data.get("error", "ProphetX returned success=false"),
+                        "environment": self.betting_env
+                    }
+            else:
+                error_text = response.text[:500]
+                logger.error(f"   ❌ ProphetX API returned status {response.status_code}: {error_text}")
+                return {
+                    "success": False,
+                    "error": f"ProphetX API returned status {response.status_code}",
+                    "response_text": error_text,
+                    "environment": self.betting_env
+                }
+                    
+        except Exception as e:
+            logger.error(f"❌ Error placing bet: {e}")
+            return {
+                "success": False,
+                "error": f"Exception placing bet: {str(e)}",
+                "environment": self.betting_env
+            }
+    
+    # Wager history methods - use betting environment since that's where our bets are
+    async def get_all_active_wagers(self) -> List[Dict[str, Any]]:
+        """Get all active wagers from betting environment"""
+        logger.info("📋 Fetching all active wagers from betting environment...")
+        
+        url = f"{self.betting_base_url}/partner/mm/get_wager_histories"
+        headers = await self.authenticate_betting_environment()  # Get betting environment auth
+        
+        # Get wagers from the last 30 days
+        to_timestamp = int(time.time())
+        from_timestamp = to_timestamp - (30 * 24 * 60 * 60)
+        
+        params = {
+            "from": from_timestamp,
+            "to": to_timestamp,
+            "limit": 1000
+        }
+        
+        try:
+            response = await self.client.get(url, params=params, headers=headers)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get("success"):
+                    all_wagers = data.get("wager_histories", [])
+                    # Filter to only active (unmatched) wagers
+                    active_wagers = [w for w in all_wagers if w.get("matching_status") == "unmatched"]
+                    
+                    logger.info(f"✅ Retrieved {len(active_wagers)} active wagers (from {len(all_wagers)} total)")
+                    return active_wagers
+                else:
+                    logger.error(f"❌ Error getting wager histories: {data.get('error')}")
+                    return []
+            else:
+                logger.error(f"❌ HTTP {response.status_code}: {response.text}")
+                return []
+                
+        except Exception as e:
+            logger.error(f"❌ Error fetching active wagers: {e}")
+            return []
+    
+    async def get_matched_bets(self) -> List[Dict[str, Any]]:
+        """Get matched bets from betting environment"""
+        logger.info("🎯 Fetching matched bets from betting environment...")
+        
+        url = f"{self.betting_base_url}/partner/mm/get_matched_bets"
+        headers = await self.authenticate_betting_environment()  # Get betting environment auth
+        
+        # Get matches from the last 7 days
+        to_timestamp = int(time.time())
+        from_timestamp = to_timestamp - (7 * 24 * 60 * 60)
+        
+        params = {
+            "from": from_timestamp,
+            "to": to_timestamp,
+            "limit": 500
+        }
+        
+        try:
+            response = await self.client.get(url, params=params, headers=headers)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get("success"):
+                    matches = data.get("matched_bets", [])
+                    logger.info(f"✅ Retrieved {len(matches)} matched bets")
+                    return matches
+                else:
+                    logger.error(f"❌ Error getting matched bets: {data.get('error')}")
+                    return []
+            else:
+                logger.error(f"❌ HTTP {response.status_code}: {response.text}")
+                return []
+                
+        except Exception as e:
+            logger.error(f"❌ Error fetching matched bets: {e}")
+            return []
+    
+    async def get_wager_by_id(self, wager_id: str) -> Optional[Dict[str, Any]]:
+        """Get specific wager by ID from betting environment"""
+        logger.info(f"🔍 Fetching wager {wager_id} from betting environment...")
+        
+        url = f"{self.betting_base_url}/partner/mm/get_wager_by_id"
+        headers = await self.authenticate_betting_environment()  # Get betting environment auth
+        
+        params = {"wager_id": wager_id}
+        
+        try:
+            response = await self.client.get(url, params=params, headers=headers)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get("success"):
+                    wager = data.get("wager")
+                    logger.info(f"✅ Retrieved wager {wager_id}")
+                    return wager
+                else:
+                    logger.warning(f"⚠️ Wager {wager_id} not found: {data.get('error')}")
+                    return None
+            else:
+                logger.error(f"❌ HTTP {response.status_code}: {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Error fetching wager {wager_id}: {e}")
+            return None
+    
     def get_auth_status(self) -> Dict[str, Any]:
         """Get current authentication status"""
         if not self.is_authenticated:
@@ -256,7 +596,8 @@ class ProphetXService:
         
         return {
             "authenticated": True,
-            "environment": "production",
+            "environment": f"{self.betting_env} (betting)",
+            "data_environment": f"{self.data_env}",
             "access_expires_in_seconds": int(access_expires_in),
             "refresh_expires_in_seconds": int(refresh_expires_in),
             "needs_refresh_soon": access_expires_in < 300,  # Less than 5 minutes
@@ -275,277 +616,5 @@ class ProphetXService:
         """Close the HTTP client"""
         await self.client.aclose()
 
-    async def get_account_balance(self, force_refresh: bool = False) -> Dict[str, Any]:
-        """
-        Get current account balance from ProphetX
-        
-        Args:
-            force_refresh: If True, bypass cache and fetch fresh balance
-            
-        Returns:
-            Dict with balance information and success status
-        """
-        try:
-            logger.info("💰 Fetching account balance from ProphetX...")
-            
-            # Make sure we're authenticated
-            if not self.is_authenticated:
-                auth_result = await self.authenticate()
-                if not auth_result.get("success"):
-                    return {
-                        "success": False,
-                        "error": "Failed to authenticate with ProphetX",
-                        "auth_error": auth_result.get("error")
-                    }
-            
-            # Make API call to get balance
-            url = f"{self.base_url}/partner/mm/get_balance"
-            headers = await self.get_auth_headers()
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, headers=headers, timeout=30.0)
-                
-                if response.status_code != 200:
-                    return {
-                        "success": False,
-                        "error": f"Balance API returned status {response.status_code}",
-                        "response_text": response.text[:500] if response.text else None
-                    }
-                
-                data = response.json()
-                balance_data = data.get('data', {})
-                
-                # CORRECTED: Parse balance information properly
-                # The 'balance' field from ProphetX IS the available balance
-                available_balance = float(balance_data.get('balance', 0))
-                unmatched_wager_balance = float(balance_data.get('unmatched_wager_balance', 0))
-                # Total balance would be available + unmatched (but ProphetX doesn't provide this)
-                total_balance = available_balance + unmatched_wager_balance
-                
-                balance_info = BalanceInfo(
-                    total=total_balance,
-                    available=available_balance,  # This is what we can actually bet with
-                    unmatched_wager_balance=unmatched_wager_balance,
-                    unmatched_wager_balance_status=balance_data.get('unmatched_wager_balance_status', 'unknown'),
-                    unmatched_wager_last_synced_at=balance_data.get('unmatched_wager_last_synced_at', ''),
-                    retrieved_at=datetime.now(timezone.utc)
-                )
-                
-                logger.info(f"✅ Balance retrieved: ${balance_info.available:.2f} available, ${balance_info.unmatched_wager_balance:.2f} tied up in unmatched bets")
-                
-                return {
-                    "success": True,
-                    "data": {
-                        "total": balance_info.total,                    # Available + Unmatched (calculated)
-                        "available": balance_info.available,           # What we can bet with
-                        "unmatched_wager_balance": balance_info.unmatched_wager_balance,  # Tied up in bets
-                        "unmatched_status": balance_info.unmatched_wager_balance_status,
-                        "last_synced": balance_info.unmatched_wager_last_synced_at,
-                        "retrieved_at": balance_info.retrieved_at.isoformat()
-                    },
-                    "balance_info": balance_info
-                }
-                
-        except Exception as e:
-            logger.error(f"❌ Error getting account balance: {e}")
-            return {
-                "success": False,
-                "error": f"Balance check exception: {str(e)}"
-            }
-
-    async def check_sufficient_funds(self, required_amount: float, safety_buffer: float = 10.0) -> Dict[str, Any]:
-        """
-        Check if we have sufficient funds for a wager
-        
-        Args:
-            required_amount: Amount needed for the wager
-            safety_buffer: Additional buffer to maintain
-            
-        Returns:
-            Dict with fund sufficiency check results
-        """
-        try:
-            # Get current balance
-            balance_result = await self.get_account_balance()
-            
-            if not balance_result.get("success"):
-                return {
-                    "sufficient_funds": False,
-                    "error": f"Failed to get balance: {balance_result.get('error')}"
-                }
-            
-            balance_data = balance_result["data"]
-            available_balance = balance_data["available"]  # This is what we can actually bet with
-            total_required = required_amount + safety_buffer
-            
-            sufficient = available_balance >= total_required
-            
-            logger.info(f"💰 Funds check: ${available_balance:.2f} available, ${total_required:.2f} required (${required_amount:.2f} + ${safety_buffer:.2f} buffer)")
-            logger.info(f"   📊 Additional info: ${balance_data['unmatched_wager_balance']:.2f} tied up in unmatched bets")
-            
-            if sufficient:
-                logger.info("✅ FUNDS CHECK PASSED: Sufficient funds available")
-            else:
-                logger.warning(f"❌ FUNDS CHECK FAILED: Need ${total_required - available_balance:.2f} more")
-            
-            return {
-                "sufficient_funds": sufficient,
-                "total_balance": balance_data["total"],                    # Available + unmatched
-                "available_balance": available_balance,                   # What we can bet with
-                "unmatched_balance": balance_data["unmatched_wager_balance"],  # Tied up in bets
-                "required_amount": required_amount,
-                "safety_buffer": safety_buffer,
-                "total_required": total_required,
-                "remaining_after_wager": available_balance - required_amount if sufficient else None,
-                "shortfall": total_required - available_balance if not sufficient else 0
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Error checking sufficient funds: {e}")
-            return {
-                "sufficient_funds": False,
-                "error": f"Funds check exception: {str(e)}"
-            }
-
-# ============================================================================  
-# IF YOU DON'T ALREADY HAVE place_bet and cancel_bet methods, add these:
-# (If you already have these methods, just ensure they return the expected format)
-# ============================================================================
-
-    async def place_bet(self, line_id: str, odds: int, stake: float, external_id: str) -> Dict[str, Any]:
-        """
-        Place a bet on ProphetX
-        
-        Args:
-            line_id: ProphetX line/market ID
-            odds: Odds to bet at
-            stake: Amount to wager
-            external_id: External tracking ID
-            
-        Returns:
-            Dict with bet placement results
-        """
-        try:
-            logger.info(f"🎯 ProphetX: Placing bet on line {line_id} @ {odds:+d} for ${stake}")
-            
-            # Make sure we're authenticated
-            if not self.is_authenticated:
-                auth_result = await self.authenticate()
-                if not auth_result.get("success"):
-                    return {
-                        "success": False,
-                        "error": "Failed to authenticate with ProphetX"
-                    }
-            
-            # Prepare bet placement data
-            url = f"{self.base_url}/partner/v2/mm/place_bet"
-            headers = await self.get_auth_headers()
-            
-            bet_data = {
-                "line_id": line_id,
-                "odds": odds,
-                "stake": stake,
-                "external_id": external_id
-            }
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, headers=headers, json=bet_data, timeout=30.0)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    
-                    if data.get("success"):
-                        bet_info = data.get("data", {})
-                        logger.info(f"✅ Bet placed successfully: ProphetX ID {bet_info.get('bet_id')}")
-                        
-                        return {
-                            "success": True,
-                            "bet_id": bet_info.get("bet_id"),
-                            "prophetx_bet_id": bet_info.get("bet_id"),
-                            "external_id": external_id,
-                            "status": bet_info.get("status", "placed"),
-                            "odds": odds,
-                            "stake": stake,
-                            "line_id": line_id
-                        }
-                    else:
-                        return {
-                            "success": False,
-                            "error": data.get("error", "ProphetX returned success=false")
-                        }
-                else:
-                    return {
-                        "success": False,
-                        "error": f"ProphetX API returned status {response.status_code}",
-                        "response_text": response.text[:500]
-                    }
-                    
-        except Exception as e:
-            logger.error(f"❌ Error placing bet: {e}")
-            return {
-                "success": False,
-                "error": f"Bet placement exception: {str(e)}"
-            }
-
-    async def cancel_bet(self, bet_id: str) -> Dict[str, Any]:
-        """
-        Cancel a bet on ProphetX
-        
-        Args:
-            bet_id: ProphetX bet ID to cancel
-            
-        Returns:
-            Dict with cancellation results
-        """
-        try:
-            logger.info(f"🔄 ProphetX: Attempting to cancel bet {bet_id}")
-            
-            # Make sure we're authenticated
-            if not self.is_authenticated:
-                auth_result = await self.authenticate()
-                if not auth_result.get("success"):
-                    return {
-                        "success": False,
-                        "error": "Failed to authenticate with ProphetX"
-                    }
-            
-            # Cancel the bet
-            url = f"{self.base_url}/partner/v2/mm/cancel_bet"
-            headers = await self.get_auth_headers()
-            
-            cancel_data = {"bet_id": bet_id}
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, headers=headers, json=cancel_data, timeout=30.0)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    
-                    if data.get("success"):
-                        logger.info(f"✅ Bet {bet_id} cancelled successfully")
-                        return {
-                            "success": True,
-                            "bet_id": bet_id,
-                            "status": data.get("data", {}).get("status", "cancelled")
-                        }
-                    else:
-                        return {
-                            "success": False,
-                            "error": data.get("error", "ProphetX returned success=false")
-                        }
-                else:
-                    return {
-                        "success": False,
-                        "error": f"Cancel API returned status {response.status_code}",
-                        "response_text": response.text[:500]
-                    }
-                    
-        except Exception as e:
-            logger.error(f"❌ Error cancelling bet: {e}")
-            return {
-                "success": False,
-                "error": f"Bet cancellation exception: {str(e)}"
-            }
-
-# Global instance
+# Create global service instance
 prophetx_service = ProphetXService()
