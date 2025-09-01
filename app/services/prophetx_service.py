@@ -435,14 +435,21 @@ class ProphetXService:
             if response.status_code == 200:
                 data = response.json()
                 
-                if data.get("success"):
-                    bet_info = data.get("data", {})
-                    logger.info(f"✅ Bet placed successfully: ProphetX ID {bet_info.get('bet_id')}")
+                # DEBUG: Log the full response to understand the structure
+                logger.info(f"   📋 Full ProphetX response: {data}")
+                
+                # ProphetX response might not have nested "success" field
+                # Check both possible structures
+                if data.get("success") or (not data.get("error") and data.get("data")):
+                    bet_info = data.get("data", data)  # Use data field if available, otherwise use root
+                    bet_id = bet_info.get("bet_id") or bet_info.get("id") or bet_info.get("wager_id")
+                    
+                    logger.info(f"✅ Bet placed successfully: ProphetX ID {bet_id}")
                     
                     return {
                         "success": True,
-                        "bet_id": bet_info.get("bet_id"),
-                        "prophetx_bet_id": bet_info.get("bet_id"),
+                        "bet_id": bet_id,
+                        "prophetx_bet_id": bet_id,
                         "external_id": external_id,
                         "status": bet_info.get("status", "placed"),
                         "odds": odds,
@@ -451,11 +458,13 @@ class ProphetXService:
                         "environment": self.betting_env
                     }
                 else:
-                    logger.error(f"   ❌ ProphetX returned success=false: {data.get('error', 'Unknown error')}")
+                    error_msg = data.get("error") or data.get("message") or "Unknown error"
+                    logger.error(f"   ❌ ProphetX returned error: {error_msg}")
                     return {
                         "success": False,
-                        "error": data.get("error", "ProphetX returned success=false"),
-                        "environment": self.betting_env
+                        "error": error_msg,
+                        "environment": self.betting_env,
+                        "full_response": data  # For debugging
                     }
             else:
                 error_text = response.text[:500]

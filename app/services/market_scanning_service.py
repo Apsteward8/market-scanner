@@ -97,6 +97,7 @@ class HighWagerOpportunity:
     
     # Market details
     market_id: str
+    line_id: str 
     market_name: str
     market_type: str  # moneyline, spread, total
     line_info: str  # Additional line information (e.g., "-6.5", "Over 45.5")
@@ -475,25 +476,39 @@ class MarketScanningService:
             
             # Extract line information for spreads and totals
             line_info = self._extract_line_info(market, available_side)
+
+            line_id_for_betting = str(liquidity_selection.get('line_id', ''))
+            market_id_for_arbitrage = str(market.get('id', '')) 
+
+            if not line_id_for_betting:
+                logger.error(f"No line_id found in selection for {available_side}: {liquidity_selection}")
+                return None
+
+            if not market_id_for_arbitrage:
+                logger.error(f"No market_id found in market: {market}")
+                return None
+
+            logger.debug(f"Creating opportunity: market_id={market_id_for_arbitrage}, line_id={line_id_for_betting}")
             
             return HighWagerOpportunity(
                 event_id=event.event_id,
                 event_name=event.display_name,
                 scheduled_time=event.scheduled_time,
                 tournament_name=event.tournament_name,
-                market_id=str(market.get('id', '')),
+                market_id=market_id_for_arbitrage,  # ← For arbitrage detection (market ID)
+                line_id=line_id_for_betting,       # ← NEW: For bet placement (line_id)
                 market_name=market.get('category_name', ''),
                 market_type=market.get('type', ''),
                 line_info=line_info,
-                large_bet_side=large_bet_side,  # Opposite team/side from available liquidity
+                large_bet_side=large_bet_side,
                 large_bet_stake_amount=large_bet_stake,
                 large_bet_liquidity_value=large_bet_value,
                 large_bet_combined_size=combined_size,
-                large_bet_odds=large_bet_odds,  # What large bettor actually got
-                available_side=available_side,  # The liquidity created by large bet
-                available_odds=available_odds,  # The odds available to other bettors
+                large_bet_odds=large_bet_odds,
+                available_side=available_side,
+                available_odds=available_odds,
                 available_liquidity_amount=available_liquidity,
-                our_proposed_odds=our_proposed_odds  # Worse odds for us = better for others
+                our_proposed_odds=our_proposed_odds
             )
             
         except Exception as e:
