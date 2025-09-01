@@ -313,20 +313,24 @@ class HighWagerBetPlacementService:
                     error=validation_error
                 )
             
-            # Check balance
+            # Check balance BEFORE placing bet
             logger.info(f"💰 Checking balance for ${request.stake} bet on {request.side}")
-            balance_check = await self._check_balance_sufficiency(request.stake)
+            balance_check = await self.prophetx_service.check_sufficient_funds(
+                required_amount=request.stake,
+                safety_buffer=self.balance_buffer
+            )
             
-            if not balance_check["sufficient_funds"]:
+            if not balance_check.get("sufficient_funds"):
                 return BetPlacementResult(
                     success=False,
                     request=request,
-                    error=f"Insufficient funds: {balance_check.get('error', 'Unknown balance error')}",
-                    balance_before=balance_check.get("total_balance")
+                    error=f"Insufficient funds: Need ${balance_check.get('total_required', request.stake):.2f}, have ${balance_check.get('available_balance', 0):.2f}",
+                    balance_before=balance_check.get("available_balance")
                 )
             
-            balance_before = balance_check["total_balance"]
-            
+            # IMPORTANT: Store AVAILABLE balance only, not total balance
+            balance_before = balance_check["available_balance"]
+                        
             # Generate external ID for tracking
             external_id = self._generate_external_id(request)
             

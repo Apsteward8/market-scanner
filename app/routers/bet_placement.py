@@ -247,15 +247,18 @@ async def test_arbitrage_placement():
         logger.error(f"Error in arbitrage test: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Arbitrage test failed: {str(e)}")
 
-@router.post("/place-all-opportunities", response_model=Dict[str, Any])
+@router.post("/place-all-opportunities")
 async def place_all_opportunities():
-    """
-    Scan for opportunities and place all recommended bets
-    
-    This is the main endpoint for production use
-    """
+    """Place bets on all available high wager opportunities"""
     try:
         logger.info("🚀 Starting comprehensive bet placement...")
+        
+        # LOCAL TRACKING for this endpoint only
+        local_bet_results = []
+        local_arbitrage_results = []
+        local_successful_bets = 0
+        local_failed_bets = 0
+        local_total_stakes = 0.0
         
         # Get opportunities
         opportunities = await market_scanning_service.scan_for_opportunities()
@@ -265,15 +268,25 @@ async def place_all_opportunities():
                 "success": True,
                 "message": "No opportunities found",
                 "data": {
-                    "opportunities_scanned": 0,
-                    "bets_placed": 0
+                    "opportunities_analyzed": 0,
+                    "decisions_processed": 0,
+                    "results": {"single_bets": [], "arbitrage_pairs": [], "skipped": []},
+                    "summary": {
+                        "total_bets_attempted": 0,
+                        "successful_bets": 0,
+                        "failed_bets": 0,
+                        "single_opportunities": 0,
+                        "arbitrage_pairs": 0,
+                        "total_stakes_placed": 0.0,
+                        "success_rate": 0.0
+                    }
                 }
             }
         
-        # Analyze for conflicts and arbitrage
+        # Get betting decisions
         betting_decisions = high_wager_arbitrage_service.detect_conflicts_and_arbitrage(opportunities)
         
-        # Process each decision
+        # Process each betting decision
         results = {
             "single_bets": [],
             "arbitrage_pairs": [],
@@ -285,10 +298,19 @@ async def place_all_opportunities():
                 if decision["type"] == "single_opportunity" and decision["action"] == "bet":
                     # Place single bet
                     result = await high_wager_bet_placement_service.place_single_opportunity(decision)
+                    
+                    # LOCAL TRACKING
+                    local_bet_results.append(result)
+                    if result.success:
+                        local_successful_bets += 1
+                        local_total_stakes += result.actual_stake or 0
+                    else:
+                        local_failed_bets += 1
+                    
                     results["single_bets"].append({
-                        "opportunity_id": decision["analysis"].opportunity.event_name,
+                        "event": decision["analysis"].opportunity.event_name,
                         "success": result.success,
-                        "bet_id": result.bet_id,
+                        "bet_id": result.external_id,
                         "stake": result.actual_stake,
                         "error": result.error
                     })
@@ -296,6 +318,19 @@ async def place_all_opportunities():
                 elif decision["type"] == "opposing_opportunities" and decision["action"] == "bet_both":
                     # Place arbitrage pair
                     result = await high_wager_bet_placement_service.place_arbitrage_pair(decision)
+                    
+                    # LOCAL TRACKING for arbitrage (counts as 2 bets)
+                    local_arbitrage_results.append(result)
+                    if result.success and result.both_placed:
+                        local_successful_bets += 2  # Both bets succeeded
+                        local_total_stakes += result.total_stake
+                    elif result.bet_1_result.success and not result.bet_2_result.success:
+                        local_successful_bets += 1  # Only first bet succeeded
+                        local_failed_bets += 1
+                        local_total_stakes += result.bet_1_result.actual_stake or 0
+                    elif not result.bet_1_result.success:
+                        local_failed_bets += 2  # Both failed
+                    
                     results["arbitrage_pairs"].append({
                         "event": decision["analysis"].opportunity_1.event_name,
                         "success": result.success,
@@ -318,22 +353,34 @@ async def place_all_opportunities():
                 
             except Exception as e:
                 logger.error(f"Error processing decision: {e}")
+                local_failed_bets += 1
                 results["skipped"].append({
                     "type": decision["type"],
                     "error": str(e)
                 })
         
-        # Get summary
-        summary = high_wager_bet_placement_service.get_placement_summary()
+        # Calculate local summary (only for this endpoint call)
+        total_bets_attempted = local_successful_bets + local_failed_bets
+        success_rate = (local_successful_bets / total_bets_attempted * 100) if total_bets_attempted > 0 else 0
+        
+        local_summary = {
+            "total_bets_attempted": total_bets_attempted,
+            "successful_bets": local_successful_bets,
+            "failed_bets": local_failed_bets,
+            "single_opportunities": len([r for r in local_bet_results if r.success]),
+            "arbitrage_pairs": len([r for r in local_arbitrage_results if r.success and r.both_placed]),
+            "total_stakes_placed": round(local_total_stakes, 2),
+            "success_rate": round(success_rate, 1)
+        }
         
         return {
             "success": True,
-            "message": f"Bet placement complete: {summary['successful_bets']} placed, {summary['failed_bets']} failed",
+            "message": f"Bet placement complete: {local_successful_bets} placed, {local_failed_bets} failed",
             "data": {
                 "opportunities_analyzed": len(opportunities),
                 "decisions_processed": len(betting_decisions),
                 "results": results,
-                "summary": summary
+                "summary": local_summary
             }
         }
         
