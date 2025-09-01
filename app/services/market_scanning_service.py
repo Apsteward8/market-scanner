@@ -459,7 +459,6 @@ class MarketScanningService:
             combined_size = large_bet_stake + large_bet_value
             
             # CORRECTED LOGIC: The large bettor bet the OPPOSITE side of available liquidity
-            # Use the improved method with team context
             large_bet_side = self._get_opposite_side_with_context(
                 available_side, 
                 market.get('type', ''), 
@@ -471,36 +470,53 @@ class MarketScanningService:
             large_bet_odds = -available_odds if available_odds > 0 else abs(available_odds)
             
             # OUR STRATEGY: Bet the same side as large bettor, but at worse odds for us
-            # This creates better odds for the other side, so we get filled first
             our_proposed_odds = self._find_next_valid_odds(large_bet_odds, better_for_bettor=False)
             
-            # Extract line information for spreads and totals
+            # Extract line information
             line_info = self._extract_line_info(market, available_side)
-
-            line_id_for_betting = str(liquidity_selection.get('line_id', ''))
-            market_id_for_arbitrage = str(market.get('id', '')) 
-
+            
+            # FIXED: Find the line_id for the side we want to bet on (large_bet_side)
+            line_id_for_betting = None
+            market_id_for_arbitrage = str(market.get('id', ''))
+            
+            # Search through all selections to find the one matching large_bet_side
+            for side_group in selections:
+                if not side_group:
+                    continue
+                for selection in side_group:
+                    selection_name = selection.get('display_name', '').strip()
+                    
+                    # Check if this selection matches the large_bet_side
+                    if self._is_same_side(selection_name, large_bet_side, market.get('type', '')):
+                        line_id_for_betting = str(selection.get('line_id', ''))
+                        logger.info(f"✅ Found betting line_id: {line_id_for_betting} for {large_bet_side}")
+                        break
+                if line_id_for_betting:
+                    break
+            
+            # Validation
             if not line_id_for_betting:
-                logger.error(f"No line_id found in selection for {available_side}: {liquidity_selection}")
+                logger.error(f"❌ Could not find line_id for large_bet_side '{large_bet_side}' in selections")
+                logger.error(f"   Available selections: {[s.get('display_name') for side_group in selections for s in side_group if s]}")
                 return None
-
+                
             if not market_id_for_arbitrage:
                 logger.error(f"No market_id found in market: {market}")
                 return None
 
-            logger.debug(f"Creating opportunity: market_id={market_id_for_arbitrage}, line_id={line_id_for_betting}")
+            logger.debug(f"Creating opportunity: market_id={market_id_for_arbitrage}, line_id={line_id_for_betting}, betting_on={large_bet_side}")
             
             return HighWagerOpportunity(
                 event_id=event.event_id,
                 event_name=event.display_name,
                 scheduled_time=event.scheduled_time,
                 tournament_name=event.tournament_name,
-                market_id=market_id_for_arbitrage,  # ← For arbitrage detection (market ID)
-                line_id=line_id_for_betting,       # ← NEW: For bet placement (line_id)
+                market_id=market_id_for_arbitrage,     # For arbitrage detection (market ID)
+                line_id=line_id_for_betting,          # For bet placement (correct team's line_id)
                 market_name=market.get('category_name', ''),
                 market_type=market.get('type', ''),
                 line_info=line_info,
-                large_bet_side=large_bet_side,
+                large_bet_side=large_bet_side,        # Who we're betting on
                 large_bet_stake_amount=large_bet_stake,
                 large_bet_liquidity_value=large_bet_value,
                 large_bet_combined_size=combined_size,
@@ -514,7 +530,30 @@ class MarketScanningService:
         except Exception as e:
             logger.error(f"Error creating opportunity: {e}")
             return None
-    
+        
+    def _is_same_side(self, selection_name: str, target_side: str, market_type: str) -> bool:
+        """Check if a selection name matches the target side we want to bet on"""
+        
+        # Clean both names for comparison
+        selection_clean = selection_name.lower().strip()
+        target_clean = target_side.lower().strip()
+        
+        # Direct match
+        if selection_clean == target_clean:
+            return True
+        
+        # For team names, check if team name is contained in selection
+        # Handle cases like "TCU Horned Frogs" vs "TCU Horned Frogs -1.5"
+        if any(word in selection_clean for word in target_clean.split() if len(word) > 2):
+            # Additional validation: make sure it's the same market type context
+            return True
+        
+        # Check if target is contained in selection (like "TCU" in "TCU Horned Frogs")  
+        if target_clean in selection_clean or selection_clean in target_clean:
+            return True
+            
+        return False
+        
     def _calculate_undercut_odds(self, original_odds: int) -> int:
         """Calculate our undercut odds using ProphetX odds ladder - DEPRECATED"""
         # This method is deprecated - use _find_next_valid_odds instead

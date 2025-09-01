@@ -380,23 +380,13 @@ class HighWagerArbitrageService:
             reason=reason
         )
     
-    def _are_opposing_opportunities(self, opp1: HighWagerOpportunity, opp2: HighWagerOpportunity) -> bool:
-        """Check if two opportunities are on opposing sides of the same market"""
-        return (
-            opp1.event_id == opp2.event_id and
-            opp1.market_id == opp2.market_id and  
-            opp1.market_type == opp2.market_type and
-            opp1.line_info == opp2.line_info and
-            opp1.large_bet_side != opp2.large_bet_side  # Different sides
-        )
-    
     def group_opportunities_by_market(self, opportunities: List[HighWagerOpportunity]) -> Dict[str, List[HighWagerOpportunity]]:
         """Group opportunities by market for conflict detection"""
         markets = {}
         
         for opp in opportunities:
-            # Create unique market key
-            market_key = f"{opp.event_id}:{opp.market_id}:{opp.market_type}:{opp.line_info}"
+            # FIXED: Remove line_info from market key since opposing sides have different line_info
+            market_key = f"{opp.event_id}:{opp.market_id}:{opp.market_type}"
             
             if market_key not in markets:
                 markets[market_key] = []
@@ -404,6 +394,16 @@ class HighWagerArbitrageService:
             markets[market_key].append(opp)
         
         return markets
+
+    def _are_opposing_opportunities(self, opp1: HighWagerOpportunity, opp2: HighWagerOpportunity) -> bool:
+        """Check if two opportunities are on opposing sides of the same market"""
+        return (
+            opp1.event_id == opp2.event_id and
+            opp1.market_id == opp2.market_id and  
+            opp1.market_type == opp2.market_type and
+            # FIXED: Remove line_info check - opposing opportunities will have different line_info
+            opp1.large_bet_side != opp2.large_bet_side  # Different sides
+        )
     
     def detect_conflicts_and_arbitrage(self, opportunities: List[HighWagerOpportunity]) -> List[Dict[str, Any]]:
         """
