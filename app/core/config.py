@@ -5,7 +5,7 @@ Configuration Management for ProphetX Market Scanner
 
 from pydantic import Field
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional, List, Dict, Any
 import os
 
 class Settings(BaseSettings):
@@ -55,7 +55,20 @@ class Settings(BaseSettings):
     # =============================================================================
     prophetx_commission_rate: float = Field(0.03, description="ProphetX commission rate on winning bets")
     break_even_buffer: float = Field(0.01, description="Buffer above break-even for profitability")
+
+    # =============================================================================
+    # Multi-Sport Configuration
+    # =============================================================================
+    target_sports: str = Field("ncaaf,mlb", description="Comma-separated list of sports to scan")
+    scan_window_hours: int = Field(24, description="Hours to look ahead for events")
     
+    # ProphetX Tournament IDs  
+    ncaaf_tournament_id: str = Field("27653", description="ProphetX NCAAF tournament ID")
+    mlb_tournament_id: Optional[str] = Field(None, description="ProphetX MLB tournament ID")
+    nfl_tournament_id: Optional[str] = Field(None, description="ProphetX NFL tournament ID")
+    nba_tournament_id: Optional[str] = Field(None, description="ProphetX NBA tournament ID")
+    nhl_tournament_id: Optional[str] = Field(None, description="ProphetX NHL tournament ID")
+
     # =============================================================================
     # Computed Properties
     # =============================================================================
@@ -91,6 +104,38 @@ class Settings(BaseSettings):
     def data_credentials(self) -> tuple[str, str]:
         """Get data credentials (always production)"""
         return (self.prophetx_production_access_key, self.prophetx_production_secret_key)
+    
+    @property
+    def target_sports_list(self) -> List[str]:
+        """Parse target sports from comma-separated string"""
+        return [sport.strip().lower() for sport in self.target_sports.split(',') if sport.strip()]
+    
+    @property
+    def sport_tournament_mapping(self) -> Dict[str, str]:
+        """Get mapping of sport names to tournament IDs"""
+        mapping = {}
+        if 'ncaaf' in self.target_sports_list and self.ncaaf_tournament_id:
+            mapping['ncaaf'] = self.ncaaf_tournament_id
+        if 'mlb' in self.target_sports_list and self.mlb_tournament_id:
+            mapping['mlb'] = self.mlb_tournament_id
+        if 'nfl' in self.target_sports_list and self.nfl_tournament_id:
+            mapping['nfl'] = self.nfl_tournament_id
+        if 'nba' in self.target_sports_list and self.nba_tournament_id:
+            mapping['nba'] = self.nba_tournament_id
+        if 'nhl' in self.target_sports_list and self.nhl_tournament_id:
+            mapping['nhl'] = self.nhl_tournament_id
+        return mapping
+    
+    def get_sport_display_name(self, sport: str) -> str:
+        """Get display name for a sport"""
+        sport_names = {
+            'ncaaf': 'NCAAF',
+            'mlb': 'MLB', 
+            'nfl': 'NFL',
+            'nba': 'NBA',
+            'nhl': 'NHL'
+        }
+        return sport_names.get(sport.lower(), sport.upper())
     
     def validate_settings(self) -> dict:
         """Validate all settings and return validation results"""

@@ -85,6 +85,7 @@ class SportEvent:
     status: str
     tournament_id: str
     tournament_name: str
+    sport_name: str
 
 @dataclass  
 class HighWagerOpportunity:
@@ -124,8 +125,8 @@ class MarketScanningService:
         from app.core.config import get_settings
         self.settings = get_settings()
         
-        # Tournament IDs (start with NCAAF)
-        self.ncaaf_tournament_id = "27653"
+        # Get sport/tournament configuration from settings
+        self.sport_tournament_mapping = self.settings.sport_tournament_mapping
         
         # Scanning parameters from settings
         self.min_stake_threshold = self.settings.min_stake_threshold  # $10000
@@ -264,78 +265,225 @@ class MarketScanningService:
         
         return list(grouped.values())
     
+
+# CORRECTED version for app/services/market_scanning_service.py
+
     async def _get_upcoming_events(self) -> List[SportEvent]:
-        """Get upcoming NCAAF events in the scan window"""
-        try:
-            # Get current time and scan window end
-            now = datetime.now(timezone.utc)
-            scan_end = now + timedelta(hours=self.scan_window_hours)
-            
-            logger.info(f"🗓️  Fetching NCAAF events from {now.strftime('%Y-%m-%d %H:%M UTC')} to {scan_end.strftime('%Y-%m-%d %H:%M UTC')}")
-            
-            # Fetch events from ProphetX using the correct method
-            response = await prophetx_service.get_sport_events(self.ncaaf_tournament_id)
-            events_data = response.get('data', {}).get('sport_events', [])
-            
-            if not events_data:
-                logger.warning("No sport events data returned")
-                return []
-            
-            events = []
-            for event_dict in events_data:
-                try:
-                    # Parse the scheduled time
-                    scheduled_time_str = event_dict.get('scheduled', '')
-                    if scheduled_time_str:
-                        scheduled_time = datetime.fromisoformat(scheduled_time_str.replace('Z', '+00:00'))
-                    else:
-                        logger.warning(f"Event {event_dict.get('event_id')} has no scheduled time")
-                        continue
-                    
-                    # Only include events in our scan window
-                    if not (now <= scheduled_time <= scan_end):
-                        logger.debug(f"Skipping event outside time window: {event_dict.get('display_name')} at {scheduled_time}")
-                        continue
-                    
-                    # Extract team names from competitors
-                    competitors = event_dict.get('competitors', [])
-                    home_team = ""
-                    away_team = ""
-                    
-                    for competitor in competitors:
-                        side = competitor.get('side', '').lower()
-                        team_name = competitor.get('display_name', competitor.get('name', ''))
-                        
-                        if side == 'home':
-                            home_team = team_name
-                        elif side == 'away':
-                            away_team = team_name
-                    
-                    # Create display name if not provided
-                    display_name = event_dict.get('display_name', f"{away_team} @ {home_team}")
-                    
-                    event = SportEvent(
-                        event_id=str(event_dict.get('event_id', '')),
-                        display_name=display_name,
-                        scheduled_time=scheduled_time,
-                        home_team=home_team,
-                        away_team=away_team,
-                        status=event_dict.get('status', ''),
-                        tournament_id=str(event_dict.get('tournament_id', self.ncaaf_tournament_id)),
-                        tournament_name=event_dict.get('tournament_name', 'NCAAF')
-                    )
-                    events.append(event)
-                    
-                except Exception as e:
-                    logger.warning(f"Error parsing event {event_dict.get('event_id', 'unknown')}: {e}")
+        """Get upcoming events for all configured sports"""
+        all_events = []
+        
+        # Check if we have any sports configured
+        if not self.sport_tournament_mapping:
+            logger.error("❌ No sports configured! Check TARGET_SPORTS and tournament ID environment variables")
+            return []
+        
+        # Fetch events for each configured sport
+        for sport, tournament_id in self.sport_tournament_mapping.items():
+            try:
+                sport_display = self.settings.get_sport_display_name(sport)
+                logger.info(f"🗓️  Fetching {sport_display} events from tournament {tournament_id}")
+                
+                # Get current time and scan window end
+                now = datetime.now(timezone.utc)
+                scan_end = now + timedelta(hours=self.scan_window_hours)
+                
+                logger.info(f"   Time window: {now.strftime('%Y-%m-%d %H:%M UTC')} to {scan_end.strftime('%Y-%m-%d %H:%M UTC')}")
+                
+                # Fetch events from ProphetX using the tournament ID
+                response = await prophetx_service.get_sport_events(tournament_id)
+                events_data = response.get('data', {}).get('sport_events', [])
+                
+                if not events_data:
+                    logger.warning(f"⚠️  No {sport_display} events found for tournament {tournament_id}")
                     continue
+                
+                # Process events for this sport
+                sport_events = []
+                for event_dict in events_data:
+                    try:
+                        # Parse the scheduled time
+                        scheduled_time_str = event_dict.get('scheduled', '')
+                        if scheduled_time_str:
+                            scheduled_time = datetime.fromisoformat(scheduled_time_str.replace('Z', '+00:00'))
+                        else:
+                            logger.debug(f"Event missing scheduled time: {event_dict.get('id', 'unknown')}")
+                            continue
+                        
+                        # Check if event is within our scan window
+                        if not (now <= scheduled_time <= scan_end):
+                            continue
+                        
+                        # Extract team/competitor information - CORRECTED METHOD NAME
+                        home_team, away_team = self._extract_team_names(event_dict)
+                        
+                        # Create SportEvent with ALL REQUIRED FIELDS
+                        event = SportEvent(
+                            event_id=str(event_dict.get('event_id', '')),
+                            display_name=event_dict.get('name', f'{away_team} vs {home_team}'),
+                            scheduled_time=scheduled_time,
+                            home_team=home_team,
+                            away_team=away_team,
+                            status=event_dict.get('status', 'not_started'),
+                            tournament_id=str(tournament_id),  # ← ADDED: Use the tournament_id we're querying
+                            tournament_name=event_dict.get('tournament', {}).get('name', f'{sport_display} Tournament'),
+                            sport_name=sport_display
+                            # Note: Removed sport_name as it's not in the existing SportEvent dataclass
+                        )
+                        sport_events.append(event)
+                        
+                    except Exception as e:
+                        logger.warning(f"Error parsing {sport_display} event: {e}")
+                        continue
+                
+                logger.info(f"✅ Found {len(sport_events)} upcoming {sport_display} events")
+                all_events.extend(sport_events)
+                
+            except Exception as e:
+                logger.error(f"❌ Error fetching {sport.upper()} events from tournament {tournament_id}: {e}")
+                continue
+        
+        # Sort all events by scheduled time
+        all_events.sort(key=lambda x: x.scheduled_time)
+        logger.info(f"🎯 Total events across all configured sports: {len(all_events)}")
+        
+        return all_events
+
+    def _extract_team_names(self, event_dict: Dict[str, Any]) -> Tuple[str, str]:
+        """Extract home and away team names from event data"""
+        try:
+            # Try to get from competitors array (most common structure)
+            competitors = event_dict.get('competitors', [])
+            home_team = "Unknown Home"
+            away_team = "Unknown Away"
             
-            logger.info(f"📅 Found {len(events)} events in scan window")
-            return events
+            for competitor in competitors:
+                if isinstance(competitor, dict):
+                    team_name = competitor.get('display_name') or competitor.get('name', 'Unknown')
+                    side = competitor.get('side', '').lower()
+                    
+                    if side == 'home':
+                        home_team = team_name
+                    elif side == 'away':
+                        away_team = team_name
+            
+            # Fallback: try direct fields
+            if home_team == "Unknown Home":
+                home_team = event_dict.get('home_team', event_dict.get('home_competitor', {}).get('name', 'Unknown Home'))
+            if away_team == "Unknown Away":  
+                away_team = event_dict.get('away_team', event_dict.get('away_competitor', {}).get('name', 'Unknown Away'))
+            
+            # Handle dict structures
+            if isinstance(home_team, dict):
+                home_team = home_team.get('name', 'Unknown Home')
+            if isinstance(away_team, dict):
+                away_team = away_team.get('name', 'Unknown Away')
+            
+            return str(home_team), str(away_team)
             
         except Exception as e:
-            logger.error(f"Error fetching upcoming events: {e}", exc_info=True)
-            return []
+            logger.warning(f"Error extracting team names: {e}")
+            return "Unknown Home", "Unknown Away"
+
+    def _should_process_opportunity(self, opportunity: HighWagerOpportunity, sport: str) -> bool:
+        """Check if opportunity meets sport-specific thresholds"""
+        # Since SportEvent doesn't have sport_name, we need to determine sport from tournament_id
+        # We can pass the sport from the calling context or determine it from tournament_id
+        tournament_id = getattr(opportunity, 'tournament_id', '')
+        
+        # Map tournament_id back to sport
+        sport_from_tournament = None
+        for s, tid in self.sport_tournament_mapping.items():
+            if tid == tournament_id:
+                sport_from_tournament = s
+                break
+        
+        # Use the passed sport parameter or the one determined from tournament
+        sport_key = sport.lower() if sport else sport_from_tournament
+        
+        # Get sport-specific minimum stake or use default
+        min_stake = self.sport_min_stakes.get(sport_key, self.settings.min_stake_threshold)
+        combined_size = opportunity.large_bet_combined_size
+        
+        # Check if opportunity meets the threshold for this sport
+        meets_threshold = combined_size >= min_stake
+        
+        if not meets_threshold:
+            logger.debug(f"Opportunity below {sport_key.upper()} threshold: ${combined_size:,.0f} < ${min_stake:,.0f}")
+        
+        return meets_threshold
+
+    # async def _get_upcoming_events(self) -> List[SportEvent]:
+    #     """Get upcoming NCAAF events in the scan window"""
+    #     try:
+    #         # Get current time and scan window end
+    #         now = datetime.now(timezone.utc)
+    #         scan_end = now + timedelta(hours=self.scan_window_hours)
+            
+    #         logger.info(f"🗓️  Fetching NCAAF events from {now.strftime('%Y-%m-%d %H:%M UTC')} to {scan_end.strftime('%Y-%m-%d %H:%M UTC')}")
+            
+    #         # Fetch events from ProphetX using the correct method
+    #         response = await prophetx_service.get_sport_events(self.ncaaf_tournament_id)
+    #         events_data = response.get('data', {}).get('sport_events', [])
+            
+    #         if not events_data:
+    #             logger.warning("No sport events data returned")
+    #             return []
+            
+    #         events = []
+    #         for event_dict in events_data:
+    #             try:
+    #                 # Parse the scheduled time
+    #                 scheduled_time_str = event_dict.get('scheduled', '')
+    #                 if scheduled_time_str:
+    #                     scheduled_time = datetime.fromisoformat(scheduled_time_str.replace('Z', '+00:00'))
+    #                 else:
+    #                     logger.warning(f"Event {event_dict.get('event_id')} has no scheduled time")
+    #                     continue
+                    
+    #                 # Only include events in our scan window
+    #                 if not (now <= scheduled_time <= scan_end):
+    #                     logger.debug(f"Skipping event outside time window: {event_dict.get('display_name')} at {scheduled_time}")
+    #                     continue
+                    
+    #                 # Extract team names from competitors
+    #                 competitors = event_dict.get('competitors', [])
+    #                 home_team = ""
+    #                 away_team = ""
+                    
+    #                 for competitor in competitors:
+    #                     side = competitor.get('side', '').lower()
+    #                     team_name = competitor.get('display_name', competitor.get('name', ''))
+                        
+    #                     if side == 'home':
+    #                         home_team = team_name
+    #                     elif side == 'away':
+    #                         away_team = team_name
+                    
+    #                 # Create display name if not provided
+    #                 display_name = event_dict.get('display_name', f"{away_team} @ {home_team}")
+                    
+    #                 event = SportEvent(
+    #                     event_id=str(event_dict.get('event_id', '')),
+    #                     display_name=display_name,
+    #                     scheduled_time=scheduled_time,
+    #                     home_team=home_team,
+    #                     away_team=away_team,
+    #                     status=event_dict.get('status', ''),
+    #                     tournament_id=str(event_dict.get('tournament_id', self.ncaaf_tournament_id)),
+    #                     tournament_name=event_dict.get('tournament_name', 'NCAAF')
+    #                 )
+    #                 events.append(event)
+                    
+    #             except Exception as e:
+    #                 logger.warning(f"Error parsing event {event_dict.get('event_id', 'unknown')}: {e}")
+    #                 continue
+            
+    #         logger.info(f"📅 Found {len(events)} events in scan window")
+    #         return events
+            
+    #     except Exception as e:
+    #         logger.error(f"Error fetching upcoming events: {e}", exc_info=True)
+    #         return []
     
     async def _get_market_data(self, event_ids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
         """Get market data for multiple events"""

@@ -31,7 +31,7 @@ async def scan_opportunities():
     Scan for high wager opportunities and group them by event
     
     This endpoint:
-    1. Gets upcoming NCAAF events (next 24 hours)
+    1. Gets upcoming sports events (next 24 hours)
     2. Fetches market data for those events
     3. Identifies high wager opportunities (stake >= $2500, value >= $2500, combined >= $10000)
     4. Groups opportunities by event and sorts by game time
@@ -164,11 +164,11 @@ async def scan_opportunities():
         logger.error(f"Error during opportunity scan: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Scan failed: {str(e)}")
 
-@router.get("/ncaaf-events", response_model=Dict[str, Any])
-async def get_ncaaf_events():
-    """Get upcoming NCAAF events for the next 24 hours"""
+@router.get("/sports-events", response_model=Dict[str, Any])
+async def get_sports_events():
+    """Get upcoming sports events for the next 24 hours"""
     try:
-        logger.info("📅 Fetching upcoming NCAAF events...")
+        logger.info("📅 Fetching upcoming sports events...")
         
         # Use the market scanning service to get events (reuse existing logic)
         events = await market_scanning_service._get_upcoming_events()
@@ -193,7 +193,7 @@ async def get_ncaaf_events():
         
         return {
             "success": True,
-            "message": f"Found {len(formatted_events)} upcoming NCAAF events",
+            "message": f"Found {len(formatted_events)} upcoming sports events",
             "data": {
                 "events": formatted_events,
                 "scan_window_hours": 24,
@@ -202,7 +202,7 @@ async def get_ncaaf_events():
         }
         
     except Exception as e:
-        logger.error(f"Error fetching NCAAF events: {e}", exc_info=True)
+        logger.error(f"Error fetching sports events: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to fetch events: {str(e)}")
 
 @router.get("/test-market-data/{event_id}", response_model=Dict[str, Any])
