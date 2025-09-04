@@ -43,6 +43,10 @@ class ProphetXService:
     def __init__(self):
         from app.core.config import get_settings
         self.settings = get_settings()
+
+        # Import the global auth manager
+        from app.services.prophetx_auth_manager import auth_manager
+        self.auth_manager = auth_manager
         
         # DUAL ENVIRONMENT SETUP - FIXED
         # Data operations (scanning, market data) - Always Production
@@ -76,68 +80,85 @@ class ProphetXService:
         
         # HTTP client with timeout
         self.client = httpx.AsyncClient(timeout=30.0)
+
+    async def initialize(self) -> Dict[str, Any]:
+        """Initialize the service by authenticating both environments"""
+        logger.info("🚀 Initializing ProphetX service...")
+        return await self.auth_manager.authenticate_both()
         
-    async def authenticate(self) -> Dict[str, Any]:
-        """Authenticate with ProphetX API - authenticate both environments"""
-        logger.info(f"🔐 Authenticating with ProphetX environments...")
+    # async def authenticate(self) -> Dict[str, Any]:
+    #     """Authenticate with ProphetX API - authenticate both environments"""
+    #     logger.info(f"🔐 Authenticating with ProphetX environments...")
         
-        # For simplicity, authenticate with production for data operations
-        # This maintains compatibility with existing scanning functionality
-        url = f"{self.data_base_url}/partner/auth/login"
-        payload = {
-            "access_key": self.data_access_key,
-            "secret_key": self.data_secret_key
-        }
+    #     # For simplicity, authenticate with production for data operations
+    #     # This maintains compatibility with existing scanning functionality
+    #     url = f"{self.data_base_url}/partner/auth/login"
+    #     payload = {
+    #         "access_key": self.data_access_key,
+    #         "secret_key": self.data_secret_key
+    #     }
         
-        try:
-            response = await self.client.post(url, json=payload)
+    #     try:
+    #         response = await self.client.post(url, json=payload)
             
-            if response.status_code == 200:
-                data = response.json()
-                token_data = data.get('data', {})
+    #         if response.status_code == 200:
+    #             data = response.json()
+    #             token_data = data.get('data', {})
                 
-                self.access_token = token_data.get('access_token')
-                self.refresh_token = token_data.get('refresh_token')
-                self.access_expire_time = token_data.get('access_expire_time')
-                self.refresh_expire_time = token_data.get('refresh_expire_time')
+    #             self.access_token = token_data.get('access_token')
+    #             self.refresh_token = token_data.get('refresh_token')
+    #             self.access_expire_time = token_data.get('access_expire_time')
+    #             self.refresh_expire_time = token_data.get('refresh_expire_time')
                 
-                if self.access_token and self.refresh_token:
-                    self.is_authenticated = True
+    #             if self.access_token and self.refresh_token:
+    #                 self.is_authenticated = True
                     
-                    access_expire_dt = datetime.fromtimestamp(self.access_expire_time, tz=timezone.utc)
-                    logger.info(f"✅ ProphetX authentication successful! Token expires: {access_expire_dt}")
+    #                 access_expire_dt = datetime.fromtimestamp(self.access_expire_time, tz=timezone.utc)
+    #                 logger.info(f"✅ ProphetX authentication successful! Token expires: {access_expire_dt}")
                     
-                    return {
-                        "success": True,
-                        "access_expires_at": access_expire_dt.isoformat(),
-                        "refresh_expires_at": datetime.fromtimestamp(self.refresh_expire_time, tz=timezone.utc).isoformat(),
-                        "environment": f"{self.data_env} (primary)"
-                    }
-                else:
-                    raise Exception("Missing tokens in response")
-            else:
-                raise Exception(f"HTTP {response.status_code}: {response.text}")
+    #                 return {
+    #                     "success": True,
+    #                     "access_expires_at": access_expire_dt.isoformat(),
+    #                     "refresh_expires_at": datetime.fromtimestamp(self.refresh_expire_time, tz=timezone.utc).isoformat(),
+    #                     "environment": f"{self.data_env} (primary)"
+    #                 }
+    #             else:
+    #                 raise Exception("Missing tokens in response")
+    #         else:
+    #             raise Exception(f"HTTP {response.status_code}: {response.text}")
                 
-        except Exception as e:
-            logger.error(f"❌ ProphetX authentication failed: {e}")
-            self.is_authenticated = False
-            raise Exception(f"Authentication failed: {e}")
+    #     except Exception as e:
+    #         logger.error(f"❌ ProphetX authentication failed: {e}")
+    #         self.is_authenticated = False
+    #         raise Exception(f"Authentication failed: {e}")
+
+    async def authenticate(self) -> Dict[str, Any]:
+        """Authenticate with both environments"""
+        return await self.auth_manager.authenticate_both()
     
     async def get_auth_headers(self) -> Dict[str, str]:
-        """Get authentication headers, refreshing token if needed"""
+        """Get authentication headers for data operations"""
+        return await self.auth_manager.get_data_headers()
+    
+    def get_auth_status(self) -> Dict[str, Any]:
+        """Get current authentication status"""
+        return self.auth_manager.get_auth_status()
+    
+    # async def get_auth_headers(self) -> Dict[str, str]:
+    #     """Get authentication headers, refreshing token if needed"""
         
-        # Check if we need to authenticate or refresh
-        now = time.time()
+    #     # Check if we need to authenticate or refresh
+    #     now = time.time()
         
-        if not self.is_authenticated or not self.access_token:
-            await self.authenticate()
-        elif self.access_expire_time and now >= (self.access_expire_time - 120):  # Refresh 2 min early
-            await self.refresh_access_token()
+    #     if not self.is_authenticated or not self.access_token:
+    #         await self.authenticate()
+    #     elif self.access_expire_time and now >= (self.access_expire_time - 120):  # Refresh 2 min early
+    #         await self.refresh_access_token()
             
-        return {
-            'Authorization': f'Bearer {self.access_token}',
-            'Content-Type': 'application/json'
-        }
+    #     return {
+    #         'Authorization': f'Bearer {self.access_token}',
+    #         'Content-Type': 'application/json'
+    #     }
     
     async def refresh_access_token(self) -> Dict[str, Any]:
         """Refresh the access token using refresh token"""
@@ -226,12 +247,19 @@ class ProphetXService:
         
         logger.info(f"🏈 Fetching sport events for tournament {tournament_id}...")
         
-        url = f"{self.base_url}/partner/mm/get_sport_events"
-        params = {"tournament_id": tournament_id}
-        headers = await self.get_auth_headers()
+        # url = f"{self.base_url}/partner/mm/get_sport_events"
+        # params = {"tournament_id": tournament_id}
+        # headers = await self.get_auth_headers()
         
         try:
-            response = await self.client.get(url, params=params, headers=headers)
+            # Use cached headers (no authentication call)
+            headers = await self.auth_manager.get_data_headers()
+            base_url = self.auth_manager.get_data_base_url()
+            
+            url = f"{base_url}/partner/mm/get_sport_events"
+            params = {"tournament_id": tournament_id}
+            
+            response = await self.client.get(url, headers=headers, params=params)
             
             if response.status_code == 200:
                 data = response.json()
@@ -264,12 +292,22 @@ class ProphetXService:
         logger.info(f"📊 Fetching market data for {len(event_ids)} events from production...")
         
         # FIXED: Use data environment for market data
-        url = f"{self.data_base_url}/partner/v2/mm/get_multiple_markets"
-        params = {"event_ids": ",".join(event_ids)}
-        headers = await self.get_auth_headers()  # This will use the data environment token
+        # url = f"{self.data_base_url}/partner/v2/mm/get_multiple_markets"
+        # params = {"event_ids": ",".join(event_ids)}
+        # headers = await self.get_auth_headers()  # This will use the data environment token
         
         try:
-            response = await self.client.get(url, params=params, headers=headers)
+            # Use cached headers (no authentication call)
+            headers = await self.auth_manager.get_data_headers()
+            base_url = self.auth_manager.get_data_base_url()
+            
+            url = f"{base_url}/partner/v2/mm/get_multiple_markets"
+            
+            # Convert event_ids to comma-separated string
+            event_ids_str = ','.join(event_ids)
+            params = {"event_ids": event_ids_str}
+            
+            response = await self.client.get(url, headers=headers, params=params)
             
             if response.status_code == 200:
                 data = response.json()
@@ -302,11 +340,14 @@ class ProphetXService:
                         "auth_error": auth_result.get("error")
                     }
             
-            # FIXED: Use betting environment for balance checks
-            url = f"{self.betting_base_url}/partner/mm/get_balance"
-            headers = await self.authenticate_betting_environment()  # Get betting environment auth
+            headers = await self.auth_manager.get_betting_headers()
+            base_url = self.auth_manager.get_betting_base_url()
             
-            response = await self.client.get(url, headers=headers, timeout=30.0)
+            logger.info(f"🎯 Using {self.auth_manager.betting_environment} environment for balance check")
+            
+            url = f"{base_url}/partner/mm/get_balance"
+            
+            response = await self.client.get(url, headers=headers)
             
             if response.status_code != 200:
                 return {
@@ -407,18 +448,11 @@ class ProphetXService:
         try:
             logger.info(f"🎯 ProphetX: Placing bet on line {line_id} @ {odds:+d} for ${stake} in {self.betting_env}")
             
-            # Make sure we're authenticated
-            if not self.is_authenticated:
-                auth_result = await self.authenticate()
-                if not auth_result.get("success"):
-                    return {
-                        "success": False,
-                        "error": "Failed to authenticate with ProphetX"
-                    }
+            # Use cached headers for betting environment (no authentication call!)
+            headers = await self.auth_manager.get_betting_headers()
+            base_url = self.auth_manager.get_betting_base_url()
             
-            # FIXED: Use correct endpoint and betting environment
-            url = f"{self.betting_base_url}/partner/mm/place_wager"
-            headers = await self.authenticate_betting_environment()  # Get betting environment auth
+            url = f"{base_url}/partner/mm/place_wager"
             
             bet_data = {
                 "line_id": line_id,
@@ -594,27 +628,27 @@ class ProphetXService:
             logger.error(f"❌ Error fetching wager {wager_id}: {e}")
             return None
     
-    def get_auth_status(self) -> Dict[str, Any]:
-        """Get current authentication status"""
-        if not self.is_authenticated:
-            return {"authenticated": False, "message": "Not authenticated"}
+    # def get_auth_status(self) -> Dict[str, Any]:
+    #     """Get current authentication status"""
+    #     if not self.is_authenticated:
+    #         return {"authenticated": False, "message": "Not authenticated"}
             
-        now = time.time()
-        access_expires_in = self.access_expire_time - now if self.access_expire_time else 0
-        refresh_expires_in = self.refresh_expire_time - now if self.refresh_expire_time else 0
+    #     now = time.time()
+    #     access_expires_in = self.access_expire_time - now if self.access_expire_time else 0
+    #     refresh_expires_in = self.refresh_expire_time - now if self.refresh_expire_time else 0
         
-        return {
-            "authenticated": True,
-            "environment": f"{self.betting_env} (betting)",
-            "data_environment": f"{self.data_env}",
-            "access_expires_in_seconds": int(access_expires_in),
-            "refresh_expires_in_seconds": int(refresh_expires_in),
-            "needs_refresh_soon": access_expires_in < 300,  # Less than 5 minutes
-            "cache_stats": {
-                "sport_events_cached": len(self.sport_events_cache),
-                "cache_keys": list(self.sport_events_cache.keys())
-            }
-        }
+    #     return {
+    #         "authenticated": True,
+    #         "environment": f"{self.betting_env} (betting)",
+    #         "data_environment": f"{self.data_env}",
+    #         "access_expires_in_seconds": int(access_expires_in),
+    #         "refresh_expires_in_seconds": int(refresh_expires_in),
+    #         "needs_refresh_soon": access_expires_in < 300,  # Less than 5 minutes
+    #         "cache_stats": {
+    #             "sport_events_cached": len(self.sport_events_cache),
+    #             "cache_keys": list(self.sport_events_cache.keys())
+    #         }
+    #     }
     
     async def clear_cache(self):
         """Clear all cached data"""
