@@ -101,6 +101,353 @@ class HighWagerBetPlacementService:
         """Enable/disable dry run mode for testing"""
         self.dry_run_mode = enabled
         logger.info(f"🧪 Dry run mode: {'ENABLED' if enabled else 'DISABLED'}")
+
+    async def place_all_opportunities_batch(self, betting_decisions: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Place all betting opportunities using batch API
+        
+        Args:
+            betting_decisions: List of betting decisions from arbitrage service
+            
+        Returns:
+            Detailed results with individual bet outcomes
+        """
+        try:
+            logger.info(f"🚀 Starting batch placement for {len(betting_decisions)} decisions...")
+            
+            # Collect all wagers to place
+            wagers_to_place = []
+            decision_map = {}  # Maps external_id to decision info
+            
+            for decision in betting_decisions:
+                if decision["type"] == "single_opportunity" and decision["action"] == "bet":
+                    wager, decision_info = await self._prepare_single_opportunity_wager(decision)
+                    if wager:
+                        wagers_to_place.append(wager)
+                        decision_map[wager["external_id"]] = decision_info
+                        
+                elif decision["type"] == "opposing_opportunities" and decision["action"] == "bet_both":
+                    wagers, decision_infos = await self._prepare_arbitrage_pair_wagers(decision)
+                    if wagers:
+                        wagers_to_place.extend(wagers)
+                        for wager, info in zip(wagers, decision_infos):
+                            decision_map[wager["external_id"]] = info
+            
+            if not wagers_to_place:
+                return {
+                    "success": True,
+                    "message": "No wagers to place",
+                    "summary": {
+                        "total_decisions": len(betting_decisions),
+                        "wagers_prepared": 0,
+                        "successful_bets": 0,
+                        "failed_bets": 0,
+                        "total_stakes_placed": 0.0
+                    },
+                    "results": {"single_bets": [], "arbitrage_pairs": [], "skipped": []}
+                }
+            
+            logger.info(f"📋 Prepared {len(wagers_to_place)} wagers for batch placement")
+            
+            # Check if we have sufficient funds for all wagers
+            total_stake_required = sum(w["stake"] for w in wagers_to_place)
+            funds_check = await self.prophetx_service.check_sufficient_funds(total_stake_required)
+            
+            if not funds_check.get("sufficient_funds"):
+                return {
+                    "success": False,
+                    "error": f"Insufficient funds: need ${total_stake_required:.2f}, have ${funds_check.get('available_balance', 0):.2f}",
+                    "funds_check": funds_check,
+                    "summary": {"total_decisions": len(betting_decisions), "wagers_prepared": len(wagers_to_place)},
+                    "results": {"single_bets": [], "arbitrage_pairs": [], "skipped": []}
+                }
+            
+            # Place all wagers in batch
+            batch_result = await self.prophetx_service.place_multiple_wagers(wagers_to_place)
+            
+            # Process results and map back to original decisions
+            results = await self._process_batch_results(batch_result, decision_map)
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error in batch placement: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": f"Batch placement exception: {str(e)}",
+                "summary": {"total_decisions": len(betting_decisions)},
+                "results": {"single_bets": [], "arbitrage_pairs": [], "skipped": []}
+            }
+
+    async def _prepare_single_opportunity_wager(self, decision: Dict[str, Any]) -> Tuple[Optional[Dict], Optional[Dict]]:
+        """
+        Prepare a single opportunity for batch placement
+        
+        Returns:
+            Tuple of (wager_dict, decision_info) or (None, None) if can't prepare
+        """
+        try:
+            analysis = decision.get("analysis")
+            if not analysis or analysis.recommendation != "bet":
+                return None, None
+            
+            opportunity = analysis.opportunity
+            sizing = analysis.bet_sizing
+            
+            # Create external ID
+            external_id = f"single_{opportunity.event_id}_{opportunity.line_id}_{int(time.time() * 1000)}"
+            
+            # Prepare wager for batch API
+            wager = {
+                "external_id": external_id,
+                "line_id": opportunity.line_id,
+                "odds": opportunity.our_proposed_odds,
+                "stake": sizing.stake_amount
+            }
+            
+            # Store decision info for result mapping
+            decision_info = {
+                "type": "single",
+                "external_id": external_id,
+                "event_name": opportunity.event_name,
+                "side": opportunity.large_bet_side,
+                "stake": sizing.stake_amount,
+                "expected_net_winnings": sizing.expected_net_winnings,
+                "opportunity": opportunity,
+                "analysis": analysis
+            }
+            
+            return wager, decision_info
+            
+        except Exception as e:
+            logger.error(f"Error preparing single opportunity wager: {e}")
+            return None, None
+
+    async def _prepare_arbitrage_pair_wagers(self, decision: Dict[str, Any]) -> Tuple[List[Dict], List[Dict]]:
+        """
+        Prepare an arbitrage pair for batch placement
+        
+        Returns:
+            Tuple of (wagers_list, decision_infos_list) or ([], []) if can't prepare
+        """
+        try:
+            analysis = decision.get("analysis")
+            if not analysis or analysis.recommendation != "bet_both":
+                return [], []
+            
+            opp1 = analysis.opportunity_1
+            opp2 = analysis.opportunity_2
+            sizing1 = analysis.bet_1_sizing
+            sizing2 = analysis.bet_2_sizing
+            
+            # Generate pair ID and external IDs
+            pair_id = self._generate_arbitrage_pair_id(opp1.event_id, opp1.market_id)
+            external_id_1 = f"arb_{pair_id}_bet1_{int(time.time() * 1000)}"
+            external_id_2 = f"arb_{pair_id}_bet2_{int(time.time() * 1000) + 1}"
+            
+            # Prepare wagers for batch API
+            wager1 = {
+                "external_id": external_id_1,
+                "line_id": opp1.line_id,
+                "odds": opp1.our_proposed_odds,
+                "stake": sizing1.stake_amount
+            }
+            
+            wager2 = {
+                "external_id": external_id_2,
+                "line_id": opp2.line_id,
+                "odds": opp2.our_proposed_odds,
+                "stake": sizing2.stake_amount
+            }
+            
+            # Store decision info for result mapping
+            decision_info_1 = {
+                "type": "arbitrage",
+                "pair_id": pair_id,
+                "bet_number": 1,
+                "external_id": external_id_1,
+                "paired_external_id": external_id_2,
+                "event_name": opp1.event_name,
+                "side": opp1.large_bet_side,
+                "stake": sizing1.stake_amount,
+                "guaranteed_profit": analysis.guaranteed_profit,
+                "total_stake": sizing1.stake_amount + sizing2.stake_amount,
+                "opportunity": opp1,
+                "analysis": analysis
+            }
+            
+            decision_info_2 = {
+                "type": "arbitrage",
+                "pair_id": pair_id,
+                "bet_number": 2,
+                "external_id": external_id_2,
+                "paired_external_id": external_id_1,
+                "event_name": opp2.event_name,
+                "side": opp2.large_bet_side,
+                "stake": sizing2.stake_amount,
+                "guaranteed_profit": analysis.guaranteed_profit,
+                "total_stake": sizing1.stake_amount + sizing2.stake_amount,
+                "opportunity": opp2,
+                "analysis": analysis
+            }
+            
+            return [wager1, wager2], [decision_info_1, decision_info_2]
+            
+        except Exception as e:
+            logger.error(f"Error preparing arbitrage pair wagers: {e}")
+            return [], []
+
+    async def _process_batch_results(self, batch_result: Dict[str, Any], decision_map: Dict[str, Dict]) -> Dict[str, Any]:
+        """
+        Process batch placement results and map back to original decision structure
+        """
+        try:
+            success_wagers = batch_result.get("success_wagers", {})
+            failed_wagers = batch_result.get("failed_wagers", {})
+            
+            # Track results
+            single_bets = []
+            arbitrage_pairs = {}  # Group by pair_id
+            skipped = []
+            
+            successful_bets = 0
+            failed_bets = 0
+            total_stakes = 0.0
+            
+            # Process all decisions (successful and failed)
+            all_external_ids = set(decision_map.keys())
+            
+            for external_id in all_external_ids:
+                decision_info = decision_map[external_id]
+                
+                if external_id in success_wagers:
+                    # Successful bet
+                    wager_result = success_wagers[external_id]
+                    successful_bets += 1
+                    total_stakes += decision_info["stake"]
+                    
+                    if decision_info["type"] == "single":
+                        single_bets.append({
+                            "event": decision_info["event_name"],
+                            "success": True,
+                            "bet_id": wager_result["bet_id"],
+                            "external_id": external_id,
+                            "stake": decision_info["stake"],
+                            "side": decision_info["side"],
+                            "error": None
+                        })
+                        
+                    elif decision_info["type"] == "arbitrage":
+                        pair_id = decision_info["pair_id"]
+                        if pair_id not in arbitrage_pairs:
+                            arbitrage_pairs[pair_id] = {
+                                "event": decision_info["event_name"],
+                                "guaranteed_profit": decision_info["guaranteed_profit"],
+                                "total_stake": decision_info["total_stake"],
+                                "bet_1_success": False,
+                                "bet_2_success": False,
+                                "bet_1_error": None,
+                                "bet_2_error": None
+                            }
+                        
+                        if decision_info["bet_number"] == 1:
+                            arbitrage_pairs[pair_id]["bet_1_success"] = True
+                        else:
+                            arbitrage_pairs[pair_id]["bet_2_success"] = True
+                            
+                elif external_id in failed_wagers:
+                    # Failed bet
+                    failure_result = failed_wagers[external_id]
+                    failed_bets += 1
+                    
+                    if decision_info["type"] == "single":
+                        single_bets.append({
+                            "event": decision_info["event_name"],
+                            "success": False,
+                            "bet_id": None,
+                            "external_id": external_id,
+                            "stake": decision_info["stake"],
+                            "side": decision_info["side"],
+                            "error": failure_result.get("message", failure_result.get("error"))
+                        })
+                        
+                    elif decision_info["type"] == "arbitrage":
+                        pair_id = decision_info["pair_id"]
+                        if pair_id not in arbitrage_pairs:
+                            arbitrage_pairs[pair_id] = {
+                                "event": decision_info["event_name"],
+                                "guaranteed_profit": decision_info["guaranteed_profit"],
+                                "total_stake": decision_info["total_stake"],
+                                "bet_1_success": False,
+                                "bet_2_success": False,
+                                "bet_1_error": None,
+                                "bet_2_error": None
+                            }
+                        
+                        error_msg = failure_result.get("message", failure_result.get("error"))
+                        if decision_info["bet_number"] == 1:
+                            arbitrage_pairs[pair_id]["bet_1_error"] = error_msg
+                        else:
+                            arbitrage_pairs[pair_id]["bet_2_error"] = error_msg
+            
+            # Convert arbitrage pairs to final format
+            arbitrage_results = []
+            for pair_id, pair_data in arbitrage_pairs.items():
+                both_placed = pair_data["bet_1_success"] and pair_data["bet_2_success"]
+                success = both_placed
+                
+                error = None
+                if not both_placed:
+                    errors = []
+                    if pair_data["bet_1_error"]:
+                        errors.append(f"Bet 1: {pair_data['bet_1_error']}")
+                    if pair_data["bet_2_error"]:
+                        errors.append(f"Bet 2: {pair_data['bet_2_error']}")
+                    error = "; ".join(errors) if errors else "One or both bets failed"
+                
+                arbitrage_results.append({
+                    "event": pair_data["event"],
+                    "success": success,
+                    "both_placed": both_placed,
+                    "total_stake": pair_data["total_stake"],
+                    "guaranteed_profit": pair_data["guaranteed_profit"],
+                    "error": error
+                })
+            
+            # Calculate summary
+            success_rate = (successful_bets / (successful_bets + failed_bets) * 100) if (successful_bets + failed_bets) > 0 else 0
+            
+            summary = {
+                "total_bets_attempted": successful_bets + failed_bets,
+                "successful_bets": successful_bets,
+                "failed_bets": failed_bets,
+                "single_opportunities": len([sb for sb in single_bets if sb["success"]]),
+                "arbitrage_pairs": len([ar for ar in arbitrage_results if ar["both_placed"]]),
+                "total_stakes_placed": round(total_stakes, 2),
+                "success_rate": round(success_rate, 1)
+            }
+            
+            return {
+                "success": batch_result.get("success", False),
+                "message": f"Batch placement complete: {successful_bets} placed, {failed_bets} failed",
+                "data": {
+                    "batch_api_result": batch_result,
+                    "summary": summary,
+                    "results": {
+                        "single_bets": single_bets,
+                        "arbitrage_pairs": arbitrage_results,
+                        "skipped": skipped
+                    }
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error processing batch results: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": f"Error processing batch results: {str(e)}",
+                "data": {"batch_api_result": batch_result}
+            }
     
     async def place_single_opportunity(self, opportunity_analysis: Dict[str, Any]) -> BetPlacementResult:
         """

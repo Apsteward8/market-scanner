@@ -729,14 +729,58 @@ class MarketScanningService:
         selection_clean = selection_name.lower().strip()
         target_clean = target_side.lower().strip()
         
-        # Direct match
+        # Direct match - this should catch most cases
         if selection_clean == target_clean:
             return True
         
-        # For team names, check if team name is contained in selection
+        # Special handling for totals markets to distinguish Over vs Under
+        market_type_lower = market_type.lower()
+        if market_type_lower in ['total', 'totals']:
+            # For totals, we need to match both the direction (Over/Under) AND the line value
+            target_is_over = 'over' in target_clean
+            target_is_under = 'under' in target_clean
+            selection_is_over = 'over' in selection_clean
+            selection_is_under = 'under' in selection_clean
+            
+            # Must match the Over/Under direction
+            if target_is_over and not selection_is_over:
+                return False
+            if target_is_under and not selection_is_under:
+                return False
+            if selection_is_over and not target_is_over:
+                return False
+            if selection_is_under and not target_is_under:
+                return False
+            
+            # If directions match, check if the line values match
+            import re
+            target_numbers = re.findall(r'\d+(?:\.\d+)?', target_clean)
+            selection_numbers = re.findall(r'\d+(?:\.\d+)?', selection_clean)
+            
+            # Both should have exactly one number (the line value)
+            if len(target_numbers) == 1 and len(selection_numbers) == 1:
+                return target_numbers[0] == selection_numbers[0]
+            
+            # If we can't extract numbers properly, fall back to exact match
+            return selection_clean == target_clean
+        
+        # For team names and spread markets, check if team name is contained in selection
         # Handle cases like "TCU Horned Frogs" vs "TCU Horned Frogs -1.5"
-        if any(word in selection_clean for word in target_clean.split() if len(word) > 2):
-            # Additional validation: make sure it's the same market type context
+        target_words = [word for word in target_clean.split() if len(word) > 2]
+        
+        # Check if significant words from target are in selection
+        if target_words and any(word in selection_clean for word in target_words):
+            # Additional validation for spread markets
+            if market_type_lower == 'spread':
+                # For spreads, also check that the spread direction matches if present
+                import re
+                target_spread = re.findall(r'[+-]\d+(?:\.\d+)?', target_clean)
+                selection_spread = re.findall(r'[+-]\d+(?:\.\d+)?', selection_clean)
+                
+                # If both have spreads, they must match
+                if target_spread and selection_spread:
+                    return target_spread[0] == selection_spread[0]
+            
             return True
         
         # Check if target is contained in selection (like "TCU" in "TCU Horned Frogs")  

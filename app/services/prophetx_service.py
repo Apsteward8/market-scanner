@@ -14,6 +14,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 import logging
 from dataclasses import dataclass
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -515,6 +516,155 @@ class ProphetXService:
             return {
                 "success": False,
                 "error": f"Exception placing bet: {str(e)}",
+                "environment": self.betting_env
+            }
+
+    async def place_multiple_wagers(self, wagers: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Place multiple wagers using ProphetX's /mm/place_multiple_wagers endpoint
+        Automatically chunks requests to stay within 20-wager API limit
+        
+        IMPORTANT: Uses betting environment (sandbox) not data environment (production)
+        
+        Args:
+            wagers: List of wager dicts with keys: external_id, line_id, odds, stake
+            
+        Returns:
+            Dict with success/failed wagers mapped by external_id for easy lookup
+        """
+        CHUNK_SIZE = 20  # ProphetX API limit
+        
+        try:
+            # Split wagers into chunks of 20
+            wager_chunks = [wagers[i:i + CHUNK_SIZE] for i in range(0, len(wagers), CHUNK_SIZE)]
+            
+            logger.info(f"💰 Placing {len(wagers)} wagers in {len(wager_chunks)} batches of up to {CHUNK_SIZE}...")
+            
+            # Collect results from all chunks
+            all_success_wagers = {}
+            all_failed_wagers = {}
+            total_successful = 0
+            total_failed = 0
+            
+            for chunk_idx, chunk in enumerate(wager_chunks, 1):
+                logger.info(f"📦 Processing batch {chunk_idx}/{len(wager_chunks)} ({len(chunk)} wagers)...")
+                
+                # FIXED: Use betting headers and betting URL (sandbox environment)
+                headers = await self.auth_manager.get_betting_headers()
+                url = f"{self.auth_manager.get_betting_base_url()}/partner/mm/place_multiple_wagers"
+                
+                logger.info(f"🎯 Using betting environment: {self.betting_env}")
+                
+                payload = {"data": chunk}
+                
+                response = await self.client.post(url, headers=headers, json=payload, timeout=30.0)
+                
+                if response.status_code in [200, 201]:
+                    data = response.json().get("data", {})
+                    
+                    # Process successful wagers from this chunk
+                    for wager in data.get("succeed_wagers", []):
+                        external_id = wager.get("external_id")
+                        if external_id:
+                            all_success_wagers[external_id] = {
+                                "success": True,
+                                "bet_id": wager.get("id"),
+                                "prophetx_bet_id": wager.get("id"),
+                                "external_id": external_id,
+                                "line_id": wager.get("line_id"),
+                                "odds": wager.get("odds"),
+                                "stake": wager.get("stake"),
+                                "matched_stake": wager.get("matched_stake", 0),
+                                "unmatched_stake": wager.get("unmatched_stake", 0),
+                                "status": wager.get("status"),
+                                "matching_status": wager.get("matching_status"),
+                                "profit": wager.get("profit"),
+                                "response_data": wager
+                            }
+                            total_successful += 1
+                    
+                    # Process failed wagers from this chunk
+                    for failed in data.get("failed_wagers", []):
+                        request_data = failed.get("request", {})
+                        external_id = request_data.get("external_id")
+                        if external_id:
+                            all_failed_wagers[external_id] = {
+                                "success": False,
+                                "external_id": external_id,
+                                "error": failed.get("error"),
+                                "message": failed.get("message"),
+                                "index": failed.get("index"),
+                                "request": request_data,
+                                "chunk": chunk_idx
+                            }
+                            total_failed += 1
+                    
+                    logger.info(f"✅ Batch {chunk_idx} complete: {len(data.get('succeed_wagers', []))} succeeded, {len(data.get('failed_wagers', []))} failed")
+                    
+                else:
+                    # Entire chunk failed
+                    error_msg = f"HTTP {response.status_code}: {response.text}"
+                    logger.error(f"❌ Batch {chunk_idx} failed: {error_msg}")
+                    
+                    # Mark all wagers in this chunk as failed
+                    for i, wager in enumerate(chunk):
+                        external_id = wager.get("external_id")
+                        if external_id:
+                            all_failed_wagers[external_id] = {
+                                "success": False,
+                                "external_id": external_id,
+                                "error": "batch_api_error",
+                                "message": error_msg,
+                                "index": i,
+                                "request": wager,
+                                "chunk": chunk_idx
+                            }
+                            total_failed += 1
+                
+                # Small delay between chunks to be nice to the API
+                if chunk_idx < len(wager_chunks):
+                    await asyncio.sleep(0.1)
+            
+            logger.info(f"🎯 All batches complete: {total_successful} succeeded, {total_failed} failed across {len(wager_chunks)} batches")
+            
+            return {
+                "success": True,
+                "total_wagers": len(wagers),
+                "successful_count": total_successful,
+                "failed_count": total_failed,
+                "success_wagers": all_success_wagers,
+                "failed_wagers": all_failed_wagers,
+                "chunks_processed": len(wager_chunks),
+                "environment": self.betting_env
+            }
+            
+        except Exception as e:
+            error_msg = f"Exception during batch placement: {str(e)}"
+            logger.error(f"❌ {error_msg}", exc_info=True)
+            
+            # Return all wagers as failed
+            failed_wagers = {}
+            for i, wager in enumerate(wagers):
+                external_id = wager.get("external_id")
+                if external_id:
+                    failed_wagers[external_id] = {
+                        "success": False,
+                        "external_id": external_id,
+                        "error": "exception",
+                        "message": error_msg,
+                        "index": i,
+                        "request": wager
+                    }
+            
+            return {
+                "success": False,
+                "error": error_msg,
+                "total_wagers": len(wagers),
+                "successful_count": 0,
+                "failed_count": len(wagers),
+                "success_wagers": {},
+                "failed_wagers": failed_wagers,
+                "chunks_processed": 0,
                 "environment": self.betting_env
             }
     
