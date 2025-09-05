@@ -235,37 +235,80 @@ class MarketScanningService:
     
     def _deduplicate_opportunities(self, opportunities: List[HighWagerOpportunity]) -> List[HighWagerOpportunity]:
         """
-        Remove duplicate opportunities on the same line, keeping only the one with best odds
+        Remove duplicate opportunities on the same side, keeping only the one with best odds for other users
         
-        For each unique combination of (event_id, market_type, line_value, side), keep only
-        the opportunity with the best odds for the bettor.
+        For each unique combination of (event_id, market_type, large_bet_side), keep only
+        the opportunity that creates the best liquidity odds for opposing bettors.
+        
+        This groups ALL opportunities for the same side (e.g., all "Philadelphia Eagles" moneyline bets)
+        regardless of specific line odds (-330, -340, etc.) and keeps the best one.
+        
+        Logic: Higher absolute value of our_proposed_odds creates better odds for the opposing side.
+        Example: our_proposed_odds of -375 creates +375 liquidity, which is better than -335 creating +335.
         """
         if not opportunities:
-            return []
+            logger.info("🔍 No opportunities to deduplicate")
+            return opportunities
         
-        # Group by unique line identifier
-        grouped = {}
-        for opp in opportunities:
-            # Create unique key for this line/side combination
-            key = (opp.event_id, opp.market_type, opp.line_info, opp.available_side)
+        logger.info(f"🔍 Starting deduplication of {len(opportunities)} opportunities")
+        
+        # Group opportunities by unique line identifier
+        grouped_opportunities = {}
+        
+        for i, opp in enumerate(opportunities):
+            # Create key based on event, market type, and the side we're betting on
+            # EXCLUDE line_info to group different odds for the same underlying bet
+            key = (opp.event_id, opp.market_type, opp.large_bet_side)
             
-            if key not in grouped:
-                grouped[key] = opp
-            else:
-                # Keep the one with better odds for the bettor
-                current_odds = grouped[key].our_proposed_odds
-                new_odds = opp.our_proposed_odds
-                
-                # Better odds for bettor:
-                # - For negative odds: less negative (higher value, e.g., -105 > -110)
-                # - For positive odds: more positive (higher value, e.g., +115 > +110)
-                if (current_odds < 0 and new_odds < 0 and new_odds > current_odds) or \
-                   (current_odds > 0 and new_odds > 0 and new_odds > current_odds):
-                    grouped[key] = opp
+            # DEBUG: Log each opportunity being processed
+            logger.info(f"🔍 [{i+1}] Processing: {opp.event_name} | {opp.market_type} | large_bet_side='{opp.large_bet_side}' | our_odds={opp.our_proposed_odds:+d} | line_info='{opp.line_info}'")
+            logger.info(f"    → Grouping key: {key}")
+            
+            if key not in grouped_opportunities:
+                grouped_opportunities[key] = []
+            grouped_opportunities[key].append(opp)
         
-        return list(grouped.values())
+        logger.info(f"🔍 Created {len(grouped_opportunities)} groups from {len(opportunities)} opportunities")
+        
+        # Keep only the best opportunity from each group
+        deduplicated_opportunities = []
+        duplicates_removed = 0
+        
+        for i, (key, group) in enumerate(grouped_opportunities.items()):
+            logger.info(f"🔍 Group {i+1}: key={key} has {len(group)} opportunities")
+            
+            if len(group) == 1:
+                # No duplicates, keep the single opportunity
+                deduplicated_opportunities.append(group[0])
+                logger.info(f"    → No duplicates, keeping single opportunity")
+            else:
+                # Multiple opportunities for the same line - keep the one with best odds for other users
+                # Higher absolute value of our_proposed_odds creates better opposing odds
+                best_opportunity = max(group, key=lambda opp: abs(opp.our_proposed_odds))
+                
+                deduplicated_opportunities.append(best_opportunity)
+                duplicates_removed += len(group) - 1
+                
+                # Log the deduplication decision
+                event_name = best_opportunity.event_name
+                market_type = best_opportunity.market_type
+                side = best_opportunity.large_bet_side
+                
+                logger.info(f"🔄 Deduplicated {len(group)} opportunities for {event_name} {market_type} {side}")
+                logger.info(f"   → Kept: {best_opportunity.line_info} (our_odds={best_opportunity.our_proposed_odds:+d} → creates liquidity at {(-best_opportunity.our_proposed_odds):+d})")
+                
+                # Log what was discarded
+                discarded = [opp for opp in group if opp != best_opportunity]
+                for disc_opp in discarded:
+                    logger.info(f"   × Discarded: {disc_opp.line_info} (our_odds={disc_opp.our_proposed_odds:+d} → creates liquidity at {(-disc_opp.our_proposed_odds):+d})")
+        
+        if duplicates_removed > 0:
+            logger.info(f"📊 Deduplication complete: Removed {duplicates_removed} duplicate opportunities, kept {len(deduplicated_opportunities)}")
+        else:
+            logger.info(f"📊 Deduplication complete: No duplicates found, kept all {len(deduplicated_opportunities)} opportunities")
+        
+        return deduplicated_opportunities
     
-
 # CORRECTED version for app/services/market_scanning_service.py
 
     async def _get_upcoming_events(self) -> List[SportEvent]:
