@@ -454,22 +454,56 @@ class HighWagerMonitoringService:
         else:
             logger.info("✅ No differences detected - all wagers up to date")
     
+    def _parse_arbitrage_pair_id(self, external_id: str) -> Optional[str]:
+        """Extract arbitrage pair ID from external_id"""
+        try:
+            if external_id.startswith("arb_"):
+                # Pattern: arb_arb_50015557_219_1757136067_bet1_1757136067792
+                # Extract the timestamp part which should be consistent for pairs
+                parts = external_id.split("_")
+                if len(parts) >= 5:
+                    # Use event_id + market_id + timestamp as pair identifier
+                    # parts[2] = event_id, parts[3] = market_id, parts[4] = timestamp
+                    pair_id = f"{parts[2]}_{parts[3]}_{parts[4]}"
+                    return pair_id
+            return None
+        except Exception as e:
+            logger.error(f"Error parsing arbitrage pair ID from {external_id}: {e}")
+            return None
+
+    def _determine_bet_status(self, wager_details: Dict) -> str:
+        """Determine the appropriate status for tracking"""
+        try:
+            # ProphetX might return different status fields
+            prophetx_status = wager_details.get("status", "unknown")
+            matching_status = wager_details.get("matching_status", "")
+            
+            # Map ProphetX statuses to our tracking statuses
+            if prophetx_status == "inactive" and matching_status == "unmatched":
+                return "pending"  # Bet placed, waiting for match
+            elif prophetx_status == "active":
+                return "matched"  # Bet is active and matched
+            elif matching_status == "matched":
+                return "matched"
+            elif prophetx_status == "cancelled":
+                return "cancelled"
+            else:
+                return "pending"  # Default to pending for new bets
+                
+        except Exception as e:
+            logger.error(f"Error determining bet status: {e}")
+            return "pending"
+
+    # Updated tracking function with fixes
     async def _update_tracked_wagers_from_placement_result(self, placement_result: Dict[str, Any], original_opportunities: List = None):
-        """Update tracked wagers from bet placement result - COMPLETE VERSION"""
+        """Update tracked wagers from bet placement result - FINAL VERSION WITH FIXES"""
         try:
             logger.info(f"🔍 DEBUG: _update_tracked_wagers_from_placement_result called")
-            logger.info(f"🔍 DEBUG: placement_result keys: {list(placement_result.keys())}")
             
             # Navigate to results via 'data' key
             data = placement_result.get("data", {})
-            results = data.get("results", {})
             batch_api_result = data.get("batch_api_result", {})
             success_wagers = batch_api_result.get("success_wagers", {})
-            
-            logger.info(f"🔍 DEBUG: data keys: {list(data.keys())}")
-            logger.info(f"🔍 DEBUG: results keys: {list(results.keys())}")
-            logger.info(f"🔍 DEBUG: batch_api_result keys: {list(batch_api_result.keys())}")
-            logger.info(f"🔍 DEBUG: success_wagers count: {len(success_wagers)}")
             
             # Create opportunity lookup for enhanced context
             opportunity_lookup = {}
@@ -480,19 +514,22 @@ class HighWagerMonitoringService:
             current_time = datetime.now(timezone.utc)
             initial_count = len(self.tracked_wagers)
             
-            # Track ALL successful wagers from batch_api_result (this is the authoritative source)
+            # Track ALL successful wagers from batch_api_result
             for external_id, wager_details in success_wagers.items():
                 try:
                     line_id = wager_details.get("line_id", "unknown")
-                    
-                    # Try to get opportunity context
                     opportunity = opportunity_lookup.get(line_id)
                     
-                    # Determine wager side from external_id or opportunity context
+                    # FIXED: Parse arbitrage pair ID
+                    arbitrage_pair_id = self._parse_arbitrage_pair_id(external_id)
+                    
+                    # FIXED: Determine proper status
+                    status = self._determine_bet_status(wager_details)
+                    
+                    # Determine wager side and type
                     side = "unknown"
                     opportunity_type = "unknown"
                     
-                    # Parse external_id to determine type and context
                     if external_id.startswith("single_"):
                         opportunity_type = "single"
                         if opportunity:
@@ -500,11 +537,9 @@ class HighWagerMonitoringService:
                     elif external_id.startswith("arb_"):
                         opportunity_type = "arbitrage"
                         if opportunity:
-                            # For arbitrage, we need to determine which side this specific wager is
-                            # This might require more sophisticated parsing of the external_id
-                            side = opportunity.large_bet_side  # Fallback
+                            side = opportunity.large_bet_side
                     
-                    # Create tracked wager with enhanced details
+                    # Create tracked wager with all fixes
                     tracked_wager = TrackedWager(
                         external_id=external_id,
                         line_id=line_id,
@@ -514,45 +549,85 @@ class HighWagerMonitoringService:
                         side=side,
                         odds=wager_details.get("odds", 0),
                         stake=wager_details.get("stake", 0),
-                        status=wager_details.get("status", "pending"),
+                        status=status,  # FIXED: Use determined status
                         placed_at=current_time,
                         last_updated=current_time,
                         large_bet_combined_size=opportunity.large_bet_combined_size if opportunity else wager_details.get("stake", 0),
-                        opportunity_type=opportunity_type
+                        opportunity_type=opportunity_type,
+                        arbitrage_pair_id=arbitrage_pair_id  # FIXED: Set arbitrage pair ID
                     )
                     
                     self.tracked_wagers[external_id] = tracked_wager
-                    logger.info(f"✅ Tracked {opportunity_type}: {external_id[:12]}... | {side} | ${tracked_wager.stake:.2f} @ {tracked_wager.odds}")
+                    
+                    # Enhanced logging with fixes
+                    pair_info = f" | Pair: {arbitrage_pair_id}" if arbitrage_pair_id else ""
+                    logger.info(f"✅ Tracked {opportunity_type}: {external_id[:12]}... | {side} | ${tracked_wager.stake:.2f} @ {tracked_wager.odds} | Status: {status}{pair_info}")
                     
                 except Exception as e:
                     logger.error(f"Error tracking wager {external_id}: {e}")
                     continue
             
             tracked_count = len(self.tracked_wagers) - initial_count
-            logger.info(f"📊 Enhanced tracking complete: {tracked_count} new wagers tracked (total: {len(self.tracked_wagers)})")
+            logger.info(f"📊 Final tracking complete: {tracked_count} new wagers tracked (total: {len(self.tracked_wagers)})")
             
-            # Enhanced debug logging
-            logger.warning(f"Single bets in results: {len(results.get('single_bets', []))}")
-            logger.warning(f"Arbitrage pairs in results: {len(results.get('arbitrage_pairs', []))}")
-            logger.warning(f"Success wagers in batch result: {len(success_wagers)}")
-            logger.warning(f"Tracked count: {tracked_count}")
-            
-            # Log some sample data for verification
-            if success_wagers and tracked_count > 0:
-                sample_external_ids = list(success_wagers.keys())[:3]
-                for ext_id in sample_external_ids:
-                    if ext_id in self.tracked_wagers:
-                        wager = self.tracked_wagers[ext_id]
-                        logger.warning(f"Sample tracked: {ext_id[:12]}... | Event: {wager.event_id} | Side: {wager.side} | Type: {wager.opportunity_type}")
+            # Debug verification of fixes
+            self._debug_arbitrage_pairs()
             
         except Exception as e:
-            logger.error(f"Error in enhanced tracking update: {e}", exc_info=True)
-            # Enhanced error logging with correct data navigation
-            logger.error(f"Placement result structure: {placement_result.keys()}")
-            if "data" in placement_result:
-                logger.error(f"Data structure: {placement_result['data'].keys()}")
-                if "results" in placement_result["data"]:
-                    logger.error(f"Results structure: {placement_result['data']['results'].keys()}")
+            logger.error(f"Error in final tracking update: {e}", exc_info=True)
+
+    def _debug_arbitrage_pairs(self):
+        """Debug function to verify arbitrage pair grouping"""
+        try:
+            # Group tracked wagers by arbitrage_pair_id
+            arbitrage_groups = {}
+            single_wagers = []
+            
+            for external_id, wager in self.tracked_wagers.items():
+                if wager.arbitrage_pair_id:
+                    if wager.arbitrage_pair_id not in arbitrage_groups:
+                        arbitrage_groups[wager.arbitrage_pair_id] = []
+                    arbitrage_groups[wager.arbitrage_pair_id].append(wager)
+                else:
+                    single_wagers.append(wager)
+            
+            logger.info(f"📊 Arbitrage Pair Analysis:")
+            logger.info(f"   Single wagers: {len(single_wagers)}")
+            logger.info(f"   Arbitrage pairs: {len(arbitrage_groups)}")
+            
+            # Show sample arbitrage pairs
+            for pair_id, wagers in list(arbitrage_groups.items())[:3]:
+                logger.info(f"   Pair {pair_id}: {len(wagers)} wagers")
+                for wager in wagers[:2]:  # Show first 2 wagers in pair
+                    logger.info(f"     - {wager.external_id[:12]}... | {wager.side} | ${wager.stake:.2f}")
+                    
+        except Exception as e:
+            logger.error(f"Error in arbitrage pair debug: {e}")
+
+    # Enhanced response formatting to include all fields
+    def format_tracked_wagers_for_response(self) -> Dict[str, Any]:
+        """Format tracked wagers for API response with all details including fixes"""
+        formatted_wagers = {}
+        
+        for external_id, wager in self.tracked_wagers.items():
+            formatted_wagers[external_id] = {
+                "external_id": wager.external_id,
+                "line_id": wager.line_id,
+                "event_id": wager.event_id,
+                "market_id": wager.market_id,
+                "market_type": wager.market_type,
+                "side": wager.side,
+                "odds": wager.odds,
+                "stake": wager.stake,
+                "status": wager.status,  # Will now show "pending" instead of "inactive"
+                "opportunity_type": wager.opportunity_type,
+                "arbitrage_pair_id": wager.arbitrage_pair_id,  # Will now be populated for arbitrage
+                "large_bet_combined_size": wager.large_bet_combined_size,
+                "placed_at": wager.placed_at.isoformat(),
+                "last_updated": wager.last_updated.isoformat()
+            }
+        
+        return formatted_wagers
 
     def _determine_wager_side_from_external_id(self, external_id: str, opportunity_lookup: Dict, wager_details: Dict) -> str:
         """Determine the specific side for a wager, especially for arbitrage pairs"""
