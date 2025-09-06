@@ -286,46 +286,71 @@ class ProphetXService:
             raise Exception(f"Failed to fetch sport events: {e}")
     
     async def get_multiple_markets(self, event_ids: List[str]) -> Dict[str, Any]:
-        """Get market data for multiple events from production data environment"""
+        """
+        Get market data for multiple events from production data environment
+        Automatically chunks requests to stay within 65-event API limit
+        """
         if not event_ids:
             return {"data": {}}
             
-        logger.info(f"📊 Fetching market data for {len(event_ids)} events from production...")
+        CHUNK_SIZE = 65  # ProphetX API limit for get_multiple_markets
         
-        # FIXED: Use data environment for market data
-        # url = f"{self.data_base_url}/partner/v2/mm/get_multiple_markets"
-        # params = {"event_ids": ",".join(event_ids)}
-        # headers = await self.get_auth_headers()  # This will use the data environment token
+        # Split event_ids into chunks of 65
+        event_chunks = [event_ids[i:i + CHUNK_SIZE] for i in range(0, len(event_ids), CHUNK_SIZE)]
+        
+        logger.info(f"📊 Fetching market data for {len(event_ids)} events in {len(event_chunks)} batches of up to {CHUNK_SIZE}...")
+        
+        # Collect results from all chunks
+        combined_data = {"data": {}}
+        total_events_processed = 0
         
         try:
             # Use cached headers (no authentication call)
             headers = await self.auth_manager.get_data_headers()
             base_url = self.auth_manager.get_data_base_url()
             
-            url = f"{base_url}/partner/v2/mm/get_multiple_markets"
-            
-            # Convert event_ids to comma-separated string
-            event_ids_str = ','.join(event_ids)
-            params = {"event_ids": event_ids_str}
-            
-            response = await self.client.get(url, headers=headers, params=params)
-            
-            if response.status_code == 200:
-                data = response.json()
+            for chunk_idx, chunk in enumerate(event_chunks, 1):
+                logger.info(f"📦 Processing batch {chunk_idx}/{len(event_chunks)} ({len(chunk)} events)...")
                 
-                # Log response size for monitoring
-                response_text = response.text
-                response_size_kb = len(response_text) / 1024
-                logger.info(f"✅ Retrieved market data: {response_size_kb:.1f}KB for {len(event_ids)} events")
+                url = f"{base_url}/partner/v2/mm/get_multiple_markets"
                 
-                return data
-            else:
-                raise Exception(f"HTTP {response.status_code}: {response.text}")
+                # Convert event_ids to comma-separated string
+                event_ids_str = ','.join(chunk)
+                params = {"event_ids": event_ids_str}
                 
+                response = await self.client.get(url, headers=headers, params=params)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    # Merge chunk data into combined results
+                    if "data" in data and isinstance(data["data"], dict):
+                        combined_data["data"].update(data["data"])
+                        total_events_processed += len(chunk)
+                    
+                    # Log response size for monitoring
+                    response_text = response.text
+                    response_size_kb = len(response_text) / 1024
+                    logger.info(f"✅ Batch {chunk_idx} complete: {response_size_kb:.1f}KB for {len(chunk)} events")
+                    
+                else:
+                    error_msg = f"HTTP {response.status_code}: {response.text}"
+                    logger.error(f"❌ Batch {chunk_idx} failed: {error_msg}")
+                    # Continue with other chunks rather than failing completely
+                    continue
+                
+                # Small delay between chunks to be nice to the API
+                if chunk_idx < len(event_chunks):
+                    await asyncio.sleep(0.1)
+            
+            logger.info(f"✅ All batches complete: Retrieved market data for {total_events_processed}/{len(event_ids)} events")
+            
+            return combined_data
+            
         except Exception as e:
             logger.error(f"❌ Error fetching market data: {e}")
             raise Exception(f"Failed to fetch market data: {e}")
-    
+        
     async def get_account_balance(self, force_refresh: bool = False) -> Dict[str, Any]:
         """Get current account balance from betting environment"""
         try:
