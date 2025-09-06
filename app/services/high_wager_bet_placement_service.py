@@ -192,7 +192,7 @@ class HighWagerBetPlacementService:
                 return None, None
             
             opportunity = analysis.opportunity
-            sizing = analysis.bet_sizing
+            sizing = analysis.sizing
             
             # Create external ID
             external_id = f"single_{opportunity.event_id}_{opportunity.line_id}_{int(time.time() * 1000)}"
