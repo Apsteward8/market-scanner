@@ -40,10 +40,12 @@ app.add_middleware(
 from app.routers import scanner
 from app.routers.arbitrage_test import router as arbitrage_router
 from app.routers.bet_placement import router as bet_placement_router
+from app.routers import monitoring
 
 app.include_router(scanner.router, prefix="/scanner", tags=["Market Scanner"])
 app.include_router(arbitrage_router, prefix="/arbitrage", tags=["Arbitrage Testing"])
 app.include_router(bet_placement_router, prefix="/betting", tags=["Bet Placement"])
+app.include_router(monitoring.router, prefix="/monitoring", tags=["High Wager Monitoring"])
 
 @app.on_event("startup")
 async def startup_event():
