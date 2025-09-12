@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     nfl_tournament_id: Optional[str] = Field(None, description="ProphetX NFL tournament ID")
     nba_tournament_id: Optional[str] = Field(None, description="ProphetX NBA tournament ID")
     nhl_tournament_id: Optional[str] = Field(None, description="ProphetX NHL tournament ID")
+    wnba_tournament_id: Optional[str] = Field(None, description="ProphetX WNBA tournament ID")
 
     # =============================================================================
     # Computed Properties
@@ -124,6 +125,8 @@ class Settings(BaseSettings):
             mapping['nba'] = self.nba_tournament_id
         if 'nhl' in self.target_sports_list and self.nhl_tournament_id:
             mapping['nhl'] = self.nhl_tournament_id
+        if 'wnba' in self.target_sports_list and self.wnba_tournament_id:
+            mapping['wnba'] = self.wnba_tournament_id
         return mapping
     
     def get_sport_display_name(self, sport: str) -> str:
@@ -133,7 +136,8 @@ class Settings(BaseSettings):
             'mlb': 'MLB', 
             'nfl': 'NFL',
             'nba': 'NBA',
-            'nhl': 'NHL'
+            'nhl': 'NHL',
+            'wnba': 'WNBA'
         }
         return sport_names.get(sport.lower(), sport.upper())
     
