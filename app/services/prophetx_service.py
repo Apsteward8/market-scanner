@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ProphetX Service for Market Scanner
+ProphetX Service for Market Scanner - ENHANCED WITH CANCELLATION METHODS
 Handles authentication and API calls for fetching games and market data
 DUAL ENVIRONMENT SUPPORT:
 - Data operations (market scanning) → Production environment
@@ -86,52 +86,6 @@ class ProphetXService:
         """Initialize the service by authenticating both environments"""
         logger.info("🚀 Initializing ProphetX service...")
         return await self.auth_manager.authenticate_both()
-        
-    # async def authenticate(self) -> Dict[str, Any]:
-    #     """Authenticate with ProphetX API - authenticate both environments"""
-    #     logger.info(f"🔐 Authenticating with ProphetX environments...")
-        
-    #     # For simplicity, authenticate with production for data operations
-    #     # This maintains compatibility with existing scanning functionality
-    #     url = f"{self.data_base_url}/partner/auth/login"
-    #     payload = {
-    #         "access_key": self.data_access_key,
-    #         "secret_key": self.data_secret_key
-    #     }
-        
-    #     try:
-    #         response = await self.client.post(url, json=payload)
-            
-    #         if response.status_code == 200:
-    #             data = response.json()
-    #             token_data = data.get('data', {})
-                
-    #             self.access_token = token_data.get('access_token')
-    #             self.refresh_token = token_data.get('refresh_token')
-    #             self.access_expire_time = token_data.get('access_expire_time')
-    #             self.refresh_expire_time = token_data.get('refresh_expire_time')
-                
-    #             if self.access_token and self.refresh_token:
-    #                 self.is_authenticated = True
-                    
-    #                 access_expire_dt = datetime.fromtimestamp(self.access_expire_time, tz=timezone.utc)
-    #                 logger.info(f"✅ ProphetX authentication successful! Token expires: {access_expire_dt}")
-                    
-    #                 return {
-    #                     "success": True,
-    #                     "access_expires_at": access_expire_dt.isoformat(),
-    #                     "refresh_expires_at": datetime.fromtimestamp(self.refresh_expire_time, tz=timezone.utc).isoformat(),
-    #                     "environment": f"{self.data_env} (primary)"
-    #                 }
-    #             else:
-    #                 raise Exception("Missing tokens in response")
-    #         else:
-    #             raise Exception(f"HTTP {response.status_code}: {response.text}")
-                
-    #     except Exception as e:
-    #         logger.error(f"❌ ProphetX authentication failed: {e}")
-    #         self.is_authenticated = False
-    #         raise Exception(f"Authentication failed: {e}")
 
     async def authenticate(self) -> Dict[str, Any]:
         """Authenticate with both environments"""
@@ -144,22 +98,6 @@ class ProphetXService:
     def get_auth_status(self) -> Dict[str, Any]:
         """Get current authentication status"""
         return self.auth_manager.get_auth_status()
-    
-    # async def get_auth_headers(self) -> Dict[str, str]:
-    #     """Get authentication headers, refreshing token if needed"""
-        
-    #     # Check if we need to authenticate or refresh
-    #     now = time.time()
-        
-    #     if not self.is_authenticated or not self.access_token:
-    #         await self.authenticate()
-    #     elif self.access_expire_time and now >= (self.access_expire_time - 120):  # Refresh 2 min early
-    #         await self.refresh_access_token()
-            
-    #     return {
-    #         'Authorization': f'Bearer {self.access_token}',
-    #         'Content-Type': 'application/json'
-    #     }
     
     async def refresh_access_token(self) -> Dict[str, Any]:
         """Refresh the access token using refresh token"""
@@ -247,10 +185,6 @@ class ProphetXService:
                 return cached.data
         
         logger.info(f"🏈 Fetching sport events for tournament {tournament_id}...")
-        
-        # url = f"{self.base_url}/partner/mm/get_sport_events"
-        # params = {"tournament_id": tournament_id}
-        # headers = await self.get_auth_headers()
         
         try:
             # Use cached headers (no authentication call)
@@ -692,14 +626,422 @@ class ProphetXService:
                 "chunks_processed": 0,
                 "environment": self.betting_env
             }
+
+    # ============================================================================
+    # NEW CANCELLATION METHODS
+    # ============================================================================
+
+    async def cancel_wager(self, external_id: str, wager_id: str) -> Dict[str, Any]:
+        """
+        Cancel a single wager using /mm/cancel_wager endpoint
+        
+        Args:
+            external_id: The external ID used when placing the wager
+            wager_id: The ProphetX wager ID returned when wager was placed
+            
+        Returns:
+            Dict with success status and details
+        """
+        try:
+            logger.info(f"🗑️ Cancelling wager: external_id={external_id}, wager_id={wager_id}")
+            
+            # Use betting environment for cancellation
+            headers = await self.auth_manager.get_betting_headers()
+            base_url = self.auth_manager.get_betting_base_url()
+            
+            url = f"{base_url}/partner/mm/cancel_wager"
+            
+            cancel_data = {
+                "external_id": external_id,
+                "wager_id": wager_id
+            }
+            
+            logger.info(f"   📤 Cancel API call: {url}")
+            logger.info(f"   📋 Cancel data: {cancel_data}")
+            
+            response = await self.client.post(url, headers=headers, json=cancel_data, timeout=30.0)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Check if cancellation was successful
+                if data.get("success") or not data.get("error"):
+                    logger.info(f"✅ Wager cancelled successfully: {external_id}")
+                    
+                    return {
+                        "success": True,
+                        "external_id": external_id,
+                        "wager_id": wager_id,
+                        "message": "Wager cancelled successfully",
+                        "prophetx_response": data,
+                        "environment": self.betting_env
+                    }
+                else:
+                    error_msg = data.get("error") or data.get("message") or "Unknown cancellation error"
+                    logger.error(f"   ❌ ProphetX cancellation failed: {error_msg}")
+                    
+                    return {
+                        "success": False,
+                        "external_id": external_id,
+                        "wager_id": wager_id,
+                        "error": error_msg,
+                        "prophetx_response": data,
+                        "environment": self.betting_env
+                    }
+            else:
+                error_text = response.text[:500]
+                logger.error(f"   ❌ Cancel API returned status {response.status_code}: {error_text}")
+                
+                return {
+                    "success": False,
+                    "external_id": external_id,
+                    "wager_id": wager_id,
+                    "error": f"HTTP {response.status_code}: Cancel API error",
+                    "response_text": error_text,
+                    "environment": self.betting_env
+                }
+                    
+        except Exception as e:
+            logger.error(f"❌ Exception cancelling wager {external_id}: {e}")
+            return {
+                "success": False,
+                "external_id": external_id,
+                "wager_id": wager_id,
+                "error": f"Exception during cancellation: {str(e)}",
+                "environment": self.betting_env
+            }
+
+    async def cancel_multiple_wagers(self, wagers_to_cancel: List[Dict[str, str]]) -> Dict[str, Any]:
+        """
+        Cancel multiple wagers using /mm/cancel_multiple_wagers endpoint
+        
+        Args:
+            wagers_to_cancel: List of dicts with 'external_id' and 'wager_id' keys
+            
+        Returns:
+            Dict with results for each wager cancellation
+        """
+        try:
+            logger.info(f"🗑️ Cancelling {len(wagers_to_cancel)} wagers in batch...")
+            
+            # Use betting environment for cancellation
+            headers = await self.auth_manager.get_betting_headers()
+            base_url = self.auth_manager.get_betting_base_url()
+            
+            url = f"{base_url}/partner/mm/cancel_multiple_wagers"
+            
+            payload = {
+                "data": wagers_to_cancel
+            }
+            
+            logger.info(f"   📤 Batch cancel API call: {url}")
+            logger.info(f"   📋 Cancelling wagers: {[w.get('external_id', 'unknown')[:8] + '...' for w in wagers_to_cancel]}")
+            
+            response = await self.client.post(url, headers=headers, json=payload, timeout=30.0)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # FIXED: Handle correct ProphetX response structure
+                # ProphetX returns: {"data": [{"success": bool, "wager": {...}, "error": {...}}]}
+                cancellation_results = data.get("data", [])
+                
+                cancelled_wagers = {}
+                failed_cancellations = {}
+                
+                # Process each cancellation result
+                for result in cancellation_results:
+                    if isinstance(result, dict):
+                        success = result.get("success", False)
+                        wager_info = result.get("wager", {})
+                        error_info = result.get("error", {})
+                        
+                        external_id = wager_info.get("external_id", "unknown")
+                        wager_id = wager_info.get("id", "unknown")
+                        
+                        if success:
+                            cancelled_wagers[external_id] = {
+                                "success": True,
+                                "external_id": external_id,
+                                "wager_id": wager_id,
+                                "message": "Cancelled successfully",
+                                "wager_details": wager_info
+                            }
+                        else:
+                            failed_cancellations[external_id] = {
+                                "success": False,
+                                "external_id": external_id,
+                                "wager_id": wager_id,
+                                "error": error_info.get("error", "Unknown error"),
+                                "message": error_info.get("message", "Cancellation failed"),
+                                "error_details": error_info
+                            }
+                
+                total_cancelled = len(cancelled_wagers)
+                total_failed = len(failed_cancellations)
+                
+                logger.info(f"✅ Batch cancellation complete: {total_cancelled} succeeded, {total_failed} failed")
+                
+                return {
+                    "success": True,
+                    "total_requested": len(wagers_to_cancel),
+                    "cancelled_count": total_cancelled,
+                    "failed_count": total_failed,
+                    "cancelled_wagers": cancelled_wagers,
+                    "failed_cancellations": failed_cancellations,
+                    "prophetx_response": data,
+                    "environment": self.betting_env
+                }
+            else:
+                error_text = response.text[:500]
+                logger.error(f"   ❌ Batch cancel API returned status {response.status_code}: {error_text}")
+                
+                return {
+                    "success": False,
+                    "total_requested": len(wagers_to_cancel),
+                    "error": f"HTTP {response.status_code}: Batch cancel API error",
+                    "response_text": error_text,
+                    "environment": self.betting_env
+                }
+                    
+        except Exception as e:
+            logger.error(f"❌ Exception during batch cancellation: {e}")
+            return {
+                "success": False,
+                "total_requested": len(wagers_to_cancel),
+                "error": f"Exception during batch cancellation: {str(e)}",
+                "environment": self.betting_env
+            }
+
+    async def cancel_all_wagers(self) -> Dict[str, Any]:
+        """
+        Cancel ALL wagers using /mm/cancel_all_wagers endpoint
+        ⚠️ WARNING: This cancels ALL your active wagers!
+        """
+        try:
+            logger.warning("🚨 CANCELLING ALL WAGERS - This will cancel EVERY active wager!")
+            
+            # Use betting environment for cancellation
+            headers = await self.auth_manager.get_betting_headers()
+            base_url = self.auth_manager.get_betting_base_url()
+            
+            url = f"{base_url}/partner/mm/cancel_all_wagers"
+            
+            logger.info(f"   📤 Cancel all API call: {url}")
+            
+            response = await self.client.post(url, headers=headers, timeout=30.0)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get("success") or not data.get("error"):
+                    cancelled_count = data.get("data", {}).get("cancelled_count", "unknown")
+                    logger.info(f"✅ All wagers cancelled successfully: {cancelled_count} wagers")
+                    
+                    return {
+                        "success": True,
+                        "cancelled_count": cancelled_count,
+                        "message": "All wagers cancelled successfully",
+                        "prophetx_response": data,
+                        "environment": self.betting_env
+                    }
+                else:
+                    error_msg = data.get("error") or data.get("message") or "Unknown error"
+                    logger.error(f"   ❌ Cancel all failed: {error_msg}")
+                    
+                    return {
+                        "success": False,
+                        "error": error_msg,
+                        "prophetx_response": data,
+                        "environment": self.betting_env
+                    }
+            else:
+                error_text = response.text[:500]
+                logger.error(f"   ❌ Cancel all API returned status {response.status_code}: {error_text}")
+                
+                return {
+                    "success": False,
+                    "error": f"HTTP {response.status_code}: Cancel all API error",
+                    "response_text": error_text,
+                    "environment": self.betting_env
+                }
+                    
+        except Exception as e:
+            logger.error(f"❌ Exception cancelling all wagers: {e}")
+            return {
+                "success": False,
+                "error": f"Exception during cancel all: {str(e)}",
+                "environment": self.betting_env
+            }
+
+    async def cancel_wagers_by_event(self, event_id: str) -> Dict[str, Any]:
+        """
+        Cancel all wagers for a specific event using /mm/cancel_wagers_by_event endpoint
+        
+        Args:
+            event_id: The event ID to cancel wagers for
+            
+        Returns:
+            Dict with cancellation results
+        """
+        try:
+            logger.info(f"🗑️ Cancelling all wagers for event {event_id}...")
+            
+            # Use betting environment for cancellation
+            headers = await self.auth_manager.get_betting_headers()
+            base_url = self.auth_manager.get_betting_base_url()
+            
+            url = f"{base_url}/partner/mm/cancel_wagers_by_event"
+            
+            cancel_data = {
+                "event_id": event_id
+            }
+            
+            logger.info(f"   📤 Cancel by event API call: {url}")
+            logger.info(f"   📋 Event ID: {event_id}")
+            
+            response = await self.client.post(url, headers=headers, json=cancel_data, timeout=30.0)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get("success") or not data.get("error"):
+                    cancelled_count = data.get("data", {}).get("cancelled_count", "unknown")
+                    logger.info(f"✅ Event wagers cancelled successfully: {cancelled_count} wagers for event {event_id}")
+                    
+                    return {
+                        "success": True,
+                        "event_id": event_id,
+                        "cancelled_count": cancelled_count,
+                        "message": f"All wagers cancelled for event {event_id}",
+                        "prophetx_response": data,
+                        "environment": self.betting_env
+                    }
+                else:
+                    error_msg = data.get("error") or data.get("message") or "Unknown error"
+                    logger.error(f"   ❌ Cancel by event failed: {error_msg}")
+                    
+                    return {
+                        "success": False,
+                        "event_id": event_id,
+                        "error": error_msg,
+                        "prophetx_response": data,
+                        "environment": self.betting_env
+                    }
+            else:
+                error_text = response.text[:500]
+                logger.error(f"   ❌ Cancel by event API returned status {response.status_code}: {error_text}")
+                
+                return {
+                    "success": False,
+                    "event_id": event_id,
+                    "error": f"HTTP {response.status_code}: Cancel by event API error",
+                    "response_text": error_text,
+                    "environment": self.betting_env
+                }
+                    
+        except Exception as e:
+            logger.error(f"❌ Exception cancelling wagers for event {event_id}: {e}")
+            return {
+                "success": False,
+                "event_id": event_id,
+                "error": f"Exception during event cancellation: {str(e)}",
+                "environment": self.betting_env
+            }
+
+    async def cancel_wagers_by_market(self, event_id: int, market_id: int) -> Dict[str, Any]:
+        """
+        Cancel all wagers for a specific market using /mm/cancel_wagers_by_market endpoint
+        
+        Args:
+            event_id: The event ID (as integer)
+            market_id: The market ID (as integer)
+            
+        Returns:
+            Dict with cancellation results
+        """
+        try:
+            logger.info(f"🗑️ Cancelling all wagers for market {market_id} in event {event_id}...")
+            
+            # Use betting environment for cancellation
+            headers = await self.auth_manager.get_betting_headers()
+            base_url = self.auth_manager.get_betting_base_url()
+            
+            url = f"{base_url}/partner/mm/cancel_wagers_by_market"
+            
+            cancel_data = {
+                "event_id": event_id,
+                "market_id": market_id
+            }
+            
+            logger.info(f"   📤 Cancel by market API call: {url}")
+            logger.info(f"   📋 Event ID: {event_id}, Market ID: {market_id}")
+            
+            response = await self.client.post(url, headers=headers, json=cancel_data, timeout=30.0)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get("success") or not data.get("error"):
+                    cancelled_count = data.get("data", {}).get("cancelled_count", "unknown")
+                    logger.info(f"✅ Market wagers cancelled successfully: {cancelled_count} wagers for market {market_id}")
+                    
+                    return {
+                        "success": True,
+                        "event_id": event_id,
+                        "market_id": market_id,
+                        "cancelled_count": cancelled_count,
+                        "message": f"All wagers cancelled for market {market_id} in event {event_id}",
+                        "prophetx_response": data,
+                        "environment": self.betting_env
+                    }
+                else:
+                    error_msg = data.get("error") or data.get("message") or "Unknown error"
+                    logger.error(f"   ❌ Cancel by market failed: {error_msg}")
+                    
+                    return {
+                        "success": False,
+                        "event_id": event_id,
+                        "market_id": market_id,
+                        "error": error_msg,
+                        "prophetx_response": data,
+                        "environment": self.betting_env
+                    }
+            else:
+                error_text = response.text[:500]
+                logger.error(f"   ❌ Cancel by market API returned status {response.status_code}: {error_text}")
+                
+                return {
+                    "success": False,
+                    "event_id": event_id,
+                    "market_id": market_id,
+                    "error": f"HTTP {response.status_code}: Cancel by market API error",
+                    "response_text": error_text,
+                    "environment": self.betting_env
+                }
+                    
+        except Exception as e:
+            logger.error(f"❌ Exception cancelling wagers for market {market_id}: {e}")
+            return {
+                "success": False,
+                "event_id": event_id,
+                "market_id": market_id,
+                "error": f"Exception during market cancellation: {str(e)}",
+                "environment": self.betting_env
+            }
+
+    # ============================================================================
+    # EXISTING WAGER HISTORY METHODS
+    # ============================================================================
     
-    # Wager history methods - use betting environment since that's where our bets are
     async def get_all_active_wagers(self) -> List[Dict[str, Any]]:
         """Get all active wagers from betting environment"""
         logger.info("📋 Fetching all active wagers from betting environment...")
         
-        url = f"{self.betting_base_url}/partner/mm/get_wager_histories"
-        headers = await self.authenticate_betting_environment()  # Get betting environment auth
+        # FIXED: Use v2 API endpoint like the working example
+        headers = await self.auth_manager.get_betting_headers()
+        base_url = self.auth_manager.get_betting_base_url()
+        url = f"{base_url}/partner/v2/mm/get_wager_histories"
         
         # Get wagers from the last 30 days
         to_timestamp = int(time.time())
@@ -711,24 +1053,30 @@ class ProphetXService:
             "limit": 1000
         }
         
+        logger.info(f"🔍 Calling ProphetX API: {url}")
+        logger.info(f"📊 Query params: {params}")
+        
         try:
             response = await self.client.get(url, params=params, headers=headers)
+            
+            logger.info(f"📡 API Response: HTTP {response.status_code}")
             
             if response.status_code == 200:
                 data = response.json()
                 
-                if data.get("success"):
-                    all_wagers = data.get("wager_histories", [])
-                    # Filter to only active (unmatched) wagers
-                    active_wagers = [w for w in all_wagers if w.get("matching_status") == "unmatched"]
-                    
-                    logger.info(f"✅ Retrieved {len(active_wagers)} active wagers (from {len(all_wagers)} total)")
-                    return active_wagers
-                else:
-                    logger.error(f"❌ Error getting wager histories: {data.get('error')}")
-                    return []
+                # FIXED: Use correct response structure like working example
+                all_wagers = data.get("data", {}).get("wagers", [])
+                
+                logger.info(f"📊 Retrieved {len(all_wagers)} total wagers from ProphetX")
+                
+                # Filter to only active (unmatched) wagers
+                active_wagers = [w for w in all_wagers if w.get("matching_status") == "unmatched"]
+                
+                logger.info(f"✅ Retrieved {len(active_wagers)} active wagers (from {len(all_wagers)} total)")
+                return active_wagers
             else:
-                logger.error(f"❌ HTTP {response.status_code}: {response.text}")
+                error_text = response.text[:500]
+                logger.error(f"❌ HTTP {response.status_code}: {error_text}")
                 return []
                 
         except Exception as e:
@@ -802,28 +1150,6 @@ class ProphetXService:
         except Exception as e:
             logger.error(f"❌ Error fetching wager {wager_id}: {e}")
             return None
-    
-    # def get_auth_status(self) -> Dict[str, Any]:
-    #     """Get current authentication status"""
-    #     if not self.is_authenticated:
-    #         return {"authenticated": False, "message": "Not authenticated"}
-            
-    #     now = time.time()
-    #     access_expires_in = self.access_expire_time - now if self.access_expire_time else 0
-    #     refresh_expires_in = self.refresh_expire_time - now if self.refresh_expire_time else 0
-        
-    #     return {
-    #         "authenticated": True,
-    #         "environment": f"{self.betting_env} (betting)",
-    #         "data_environment": f"{self.data_env}",
-    #         "access_expires_in_seconds": int(access_expires_in),
-    #         "refresh_expires_in_seconds": int(refresh_expires_in),
-    #         "needs_refresh_soon": access_expires_in < 300,  # Less than 5 minutes
-    #         "cache_stats": {
-    #             "sport_events_cached": len(self.sport_events_cache),
-    #             "cache_keys": list(self.sport_events_cache.keys())
-    #         }
-    #     }
     
     async def clear_cache(self):
         """Clear all cached data"""

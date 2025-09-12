@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Bet Placement Router
+Bet Placement Router - ENHANCED WITH CANCELLATION ENDPOINTS
 API endpoints for testing and using the high wager bet placement service
 """
 
@@ -587,3 +587,269 @@ async def get_placed_bets():
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting placed bets: {str(e)}")
+
+# ============================================================================
+# NEW CANCELLATION ENDPOINTS
+# ============================================================================
+
+@router.post("/cancel-wager", response_model=Dict[str, Any])
+async def cancel_single_wager(external_id: str, wager_id: str):
+    """
+    Cancel a single wager
+    
+    Args:
+        external_id: External ID used when placing the wager
+        wager_id: ProphetX wager ID returned when wager was placed
+    """
+    try:
+        from app.services.prophetx_service import prophetx_service
+        
+        logger.info(f"🗑️ Manual cancellation request: external_id={external_id}, wager_id={wager_id}")
+        
+        result = await prophetx_service.cancel_wager(external_id, wager_id)
+        
+        return {
+            "success": result["success"],
+            "message": "Wager cancellation attempt complete",
+            "data": result
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in cancel wager endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Cancellation failed: {str(e)}")
+
+@router.post("/cancel-multiple-wagers", response_model=Dict[str, Any])
+async def cancel_multiple_wagers(wagers: List[Dict[str, str]]):
+    """
+    Cancel multiple wagers in batch
+    
+    Args:
+        wagers: List of {"external_id": "...", "wager_id": "..."} objects
+    """
+    try:
+        from app.services.prophetx_service import prophetx_service
+        
+        logger.info(f"🗑️ Batch cancellation request for {len(wagers)} wagers")
+        
+        result = await prophetx_service.cancel_multiple_wagers(wagers)
+        
+        return {
+            "success": result["success"],
+            "message": f"Batch cancellation complete: {len(wagers)} wagers processed",
+            "data": result
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in batch cancel endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Batch cancellation failed: {str(e)}")
+
+@router.post("/cancel-all-wagers", response_model=Dict[str, Any])
+async def cancel_all_wagers(confirm: bool = False):
+    """
+    Cancel ALL active wagers - USE WITH EXTREME CAUTION!
+    
+    Args:
+        confirm: Must be True to proceed (safety check)
+    """
+    try:
+        if not confirm:
+            return {
+                "success": False,
+                "message": "Cancellation not confirmed",
+                "warning": "This endpoint cancels ALL your active wagers. Set confirm=true to proceed.",
+                "data": None
+            }
+        
+        from app.services.prophetx_service import prophetx_service
+        
+        logger.warning("🚨 CANCEL ALL WAGERS requested - proceeding with confirmation")
+        
+        result = await prophetx_service.cancel_all_wagers()
+        
+        return {
+            "success": result["success"],
+            "message": "Cancel all wagers attempt complete",
+            "data": result,
+            "warning": "ALL WAGERS WERE CANCELLED" if result["success"] else "Cancellation attempt failed"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in cancel all endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Cancel all failed: {str(e)}")
+
+@router.post("/cancel-wagers-by-event", response_model=Dict[str, Any])
+async def cancel_wagers_by_event(event_id: str):
+    """
+    Cancel all wagers for a specific event
+    
+    Args:
+        event_id: Event ID to cancel wagers for
+    """
+    try:
+        from app.services.prophetx_service import prophetx_service
+        
+        logger.info(f"🗑️ Event cancellation request for event_id={event_id}")
+        
+        result = await prophetx_service.cancel_wagers_by_event(event_id)
+        
+        return {
+            "success": result["success"],
+            "message": f"Event cancellation complete for event {event_id}",
+            "data": result
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in cancel by event endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Event cancellation failed: {str(e)}")
+
+@router.post("/cancel-wagers-by-market", response_model=Dict[str, Any])
+async def cancel_wagers_by_market(event_id: int, market_id: int):
+    """
+    Cancel all wagers for a specific market
+    
+    Args:
+        event_id: Event ID (integer)
+        market_id: Market ID (integer)
+    """
+    try:
+        from app.services.prophetx_service import prophetx_service
+        
+        logger.info(f"🗑️ Market cancellation request for event_id={event_id}, market_id={market_id}")
+        
+        result = await prophetx_service.cancel_wagers_by_market(event_id, market_id)
+        
+        return {
+            "success": result["success"],
+            "message": f"Market cancellation complete for market {market_id} in event {event_id}",
+            "data": result
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in cancel by market endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Market cancellation failed: {str(e)}")
+
+@router.get("/active-wagers", response_model=Dict[str, Any])
+async def get_active_wagers():
+    """Get all currently active (unmatched) wagers from ProphetX"""
+    try:
+        from app.services.prophetx_service import prophetx_service
+        
+        logger.info("📋 Fetching active wagers for manual inspection")
+        
+        active_wagers = await prophetx_service.get_all_active_wagers()
+        
+        # Format for easy inspection and cancellation
+        formatted_wagers = []
+        for wager in active_wagers:
+            formatted_wagers.append({
+                "external_id": wager.get("external_id"),
+                "wager_id": wager.get("id") or wager.get("wager_id"),
+                "line_id": wager.get("line_id"),
+                "odds": wager.get("odds"),
+                "stake": wager.get("stake"),
+                "status": wager.get("status"),
+                "matching_status": wager.get("matching_status"),
+                "created_at": wager.get("created_at"),
+                "event_info": {
+                    "event_id": wager.get("event_id"),
+                    "market_id": wager.get("market_id")
+                }
+            })
+        
+        return {
+            "success": True,
+            "message": f"Retrieved {len(active_wagers)} active wagers",
+            "data": {
+                "total_active": len(active_wagers),
+                "wagers": formatted_wagers
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting active wagers: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get active wagers: {str(e)}")
+
+# Add this new endpoint for getting tracked wagers with ProphetX IDs
+@router.get("/tracked-wagers", response_model=Dict[str, Any])
+async def get_tracked_wagers():
+    """Get all tracked wagers from the monitoring service (includes ProphetX wager IDs)"""
+    try:
+        from app.services.high_wager_monitoring_service import high_wager_monitoring_service
+        
+        if not hasattr(high_wager_monitoring_service, 'tracked_wagers'):
+            return {
+                "success": False,
+                "message": "Monitoring service not initialized or no tracked wagers",
+                "data": {"tracked_wagers": {}}
+            }
+        
+        formatted_wagers = high_wager_monitoring_service.format_tracked_wagers_for_response()
+        
+        return {
+            "success": True,
+            "message": f"Retrieved {len(formatted_wagers)} tracked wagers with ProphetX IDs",
+            "data": {
+                "total_tracked": len(formatted_wagers),
+                "tracked_wagers": formatted_wagers
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting tracked wagers: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get tracked wagers: {str(e)}")
+
+# Enhanced wager lookup with both external_id and prophetx_wager_id support  
+@router.get("/wager-by-id/{wager_id}", response_model=Dict[str, Any])
+async def get_wager_by_id(wager_id: str):
+    """Get specific wager details by ProphetX wager ID or external ID"""
+    try:
+        from app.services.prophetx_service import prophetx_service
+        from app.services.high_wager_monitoring_service import high_wager_monitoring_service
+        
+        logger.info(f"🔍 Fetching wager details for ID={wager_id}")
+        
+        # First try to get from ProphetX directly
+        wager = await prophetx_service.get_wager_by_id(wager_id)
+        
+        # Also check if it's in our tracked wagers
+        tracked_wager = None
+        for ext_id, tracked in high_wager_monitoring_service.tracked_wagers.items():
+            if tracked.prophetx_wager_id == wager_id or tracked.external_id == wager_id:
+                tracked_wager = tracked
+                break
+        
+        if wager or tracked_wager:
+            result = {
+                "success": True,
+                "message": f"Wager {wager_id} retrieved",
+                "data": {
+                    "prophetx_wager": wager,
+                    "tracked_wager": {
+                        "external_id": tracked_wager.external_id,
+                        "prophetx_wager_id": tracked_wager.prophetx_wager_id,
+                        "line_id": tracked_wager.line_id,
+                        "odds": tracked_wager.odds,
+                        "stake": tracked_wager.stake,
+                        "status": tracked_wager.status,
+                        "opportunity_type": tracked_wager.opportunity_type
+                    } if tracked_wager else None,
+                    "cancellation_info": {
+                        "external_id": tracked_wager.external_id if tracked_wager else wager.get("external_id"),
+                        "prophetx_wager_id": tracked_wager.prophetx_wager_id if tracked_wager else (wager.get("id") or wager_id),
+                        "can_cancel": (tracked_wager and tracked_wager.status in ["pending", "unmatched"]) or 
+                                     (wager and wager.get("matching_status") == "unmatched"),
+                        "cancel_endpoint": "/betting/cancel-wager"
+                    }
+                }
+            }
+            return result
+        else:
+            return {
+                "success": False,
+                "message": f"Wager {wager_id} not found in ProphetX or tracked wagers",
+                "data": None
+            }
+        
+    except Exception as e:
+        logger.error(f"Error getting wager by ID: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get wager: {str(e)}")
