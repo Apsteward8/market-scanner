@@ -16,6 +16,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any, Set, Tuple
 from dataclasses import dataclass
 from collections import defaultdict
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,9 @@ class WagerDifference:
     difference_type: str  # "odds_change", "stake_change", "new_opportunity", "remove_opportunity"
     action_needed: str  # "update_wager", "cancel_wager", "place_new_wager", "no_action"
     reason: str
+    # ADDED: Specific wager identifiers for actions
+    wager_external_id: Optional[str] = None
+    wager_prophetx_id: Optional[str] = None
 
 @dataclass
 class ActionResult:
@@ -253,43 +257,58 @@ class HighWagerMonitoringService:
         return results
     
     async def _execute_cancel_wager(self, diff: WagerDifference) -> ActionResult:
-        """Cancel a wager that's no longer needed"""
+        """Cancel a specific wager using its identifiers"""
         try:
-            # Find the tracked wager
-            tracked_wager = None
-            for wager in self.tracked_wagers.values():
-                if wager.line_id == diff.line_id:
-                    tracked_wager = wager
-                    break
-            
-            if not tracked_wager:
-                return ActionResult(
-                    success=False,
-                    action_type="cancel",
-                    line_id=diff.line_id,
-                    error="Tracked wager not found"
-                )
+            # FIXED: Use specific wager identifiers from the difference
+            if diff.wager_external_id and diff.wager_prophetx_id:
+                external_id = diff.wager_external_id
+                prophetx_wager_id = diff.wager_prophetx_id
+            else:
+                # Fallback: Find the tracked wager by line_id (but this is less reliable)
+                tracked_wager = None
+                for wager in self.tracked_wagers.values():
+                    if (wager.line_id == diff.line_id and 
+                        wager.side == diff.side and 
+                        wager.status in ["pending", "unmatched", "active"]):
+                        tracked_wager = wager
+                        break
+                
+                if not tracked_wager:
+                    return ActionResult(
+                        success=False,
+                        action_type="cancel",
+                        line_id=diff.line_id,
+                        error="No active tracked wager found for this line/side"
+                    )
+                
+                external_id = tracked_wager.external_id
+                prophetx_wager_id = tracked_wager.prophetx_wager_id
             
             # Call ProphetX cancellation API
             cancel_result = await self.prophetx_service.cancel_wager(
-                external_id=tracked_wager.external_id,
-                wager_id=tracked_wager.prophetx_wager_id
+                external_id=external_id,
+                wager_id=prophetx_wager_id
             )
             
             if cancel_result["success"]:
-                # Update tracked wager status
-                tracked_wager.status = "cancelled"
-                tracked_wager.last_updated = datetime.now(timezone.utc)
-                
-                # Update line exposure
-                self.line_exposure[diff.line_id] -= tracked_wager.stake
+                # FIXED: Update tracked wager status and remove from line exposure
+                if external_id in self.tracked_wagers:
+                    tracked_wager = self.tracked_wagers[external_id]
+                    tracked_wager.status = "cancelled"
+                    tracked_wager.last_updated = datetime.now(timezone.utc)
+                    
+                    # Update line exposure
+                    self.line_exposure[diff.line_id] -= tracked_wager.stake
+                    
+                    # OPTIONALLY: Remove from tracked_wagers entirely
+                    # del self.tracked_wagers[external_id]
                 
                 return ActionResult(
                     success=True,
                     action_type="cancel",
                     line_id=diff.line_id,
-                    external_id=tracked_wager.external_id,
-                    prophetx_wager_id=tracked_wager.prophetx_wager_id,
+                    external_id=external_id,
+                    prophetx_wager_id=prophetx_wager_id,
                     details=cancel_result
                 )
             else:
@@ -297,8 +316,8 @@ class HighWagerMonitoringService:
                     success=False,
                     action_type="cancel",
                     line_id=diff.line_id,
-                    external_id=tracked_wager.external_id,
-                    prophetx_wager_id=tracked_wager.prophetx_wager_id,
+                    external_id=external_id,
+                    prophetx_wager_id=prophetx_wager_id,
                     error=cancel_result.get("error", "Cancellation failed")
                 )
                 
@@ -338,9 +357,10 @@ class HighWagerMonitoringService:
                         error=f"Fill wait period: {wait_remaining:.0f}s remaining"
                     )
             
-            # Generate external ID for new wager
+            # Generate external ID for new wager with more entropy
             timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
-            external_id = f"monitor_{diff.event_id}_{diff.line_id[:8]}_{timestamp}"
+            unique_suffix = str(uuid.uuid4()).replace('-', '')[:8]
+            external_id = f"monitor_{diff.event_id}_{diff.line_id[:8]}_{timestamp}_{unique_suffix}"
             
             # Place the wager
             place_result = await self.prophetx_service.place_bet(
@@ -351,9 +371,15 @@ class HighWagerMonitoringService:
             )
             
             if place_result["success"]:
-                # Create new tracked wager
-                prophetx_wager_id = place_result.get("prophetx_bet_id") or place_result.get("bet_id", "unknown")
+                # FIXED: Extract ProphetX wager ID more reliably
+                prophetx_wager_id = (
+                    place_result.get("prophetx_bet_id") or 
+                    place_result.get("bet_id") or 
+                    place_result.get("data", {}).get("wager", {}).get("id") or
+                    "unknown"
+                )
                 
+                # FIXED: Create new tracked wager with proper data
                 tracked_wager = TrackedWager(
                     external_id=external_id,
                     prophetx_wager_id=prophetx_wager_id,
@@ -364,18 +390,20 @@ class HighWagerMonitoringService:
                     side=diff.side,
                     odds=diff.recommended_odds,
                     stake=diff.recommended_stake,
-                    status="pending",
+                    status="pending",  # or "unmatched" based on ProphetX response
                     placed_at=datetime.now(timezone.utc),
                     last_updated=datetime.now(timezone.utc),
                     large_bet_combined_size=0,  # Will be updated from opportunity data if available
                     opportunity_type="single"  # Default for monitoring-placed bets
                 )
                 
-                # Add to tracking
+                # FIXED: Add to tracking immediately
                 self.tracked_wagers[external_id] = tracked_wager
                 
                 # Update line exposure
                 self.line_exposure[diff.line_id] += diff.recommended_stake
+                
+                logger.info(f"✅ New wager tracked: {external_id} -> {prophetx_wager_id}")
                 
                 return ActionResult(
                     success=True,
@@ -406,7 +434,7 @@ class HighWagerMonitoringService:
         try:
             logger.info(f"🔄 Updating wager: {diff.line_id[:8]}... | {diff.reason}")
             
-            # Step 1: Cancel the existing wager
+            # Step 1: Cancel the existing wager using specific identifiers
             cancel_result = await self._execute_cancel_wager(diff)
             
             if not cancel_result.success:
@@ -436,7 +464,6 @@ class HighWagerMonitoringService:
                     }
                 )
             else:
-                # Cancel succeeded but place failed - we've lost our position
                 logger.error(f"❌ UPDATE PARTIAL FAILURE: Cancelled wager but failed to place new one for {diff.line_id}")
                 return ActionResult(
                     success=False,
@@ -575,60 +602,113 @@ class HighWagerMonitoringService:
         """Compare current wagers with new opportunities to detect differences"""
         differences = []
         
-        # Create lookup maps
-        current_opps_by_line = {opp.line_id: opp for opp in current_opportunities}
-        tracked_wagers_by_line = {w.line_id: w for w in self.tracked_wagers.values() if w.status != "cancelled"}
+        # FIXED: Create lookup maps using line_id but handle multiple wagers per line
+        current_opps_by_line = {}
+        for opp in current_opportunities:
+            if opp.line_id not in current_opps_by_line:
+                current_opps_by_line[opp.line_id] = []
+            current_opps_by_line[opp.line_id].append(opp)
         
-        # Find differences
-        all_line_ids = set(current_opps_by_line.keys()) | set(tracked_wagers_by_line.keys())
+        # FIXED: Group active tracked wagers by line_id, but keep all wagers
+        active_wagers_by_line = {}
+        for external_id, wager in self.tracked_wagers.items():
+            # Only consider wagers that are actually active
+            if wager.status in ["pending", "unmatched", "active"]:  # NOT cancelled
+                if wager.line_id not in active_wagers_by_line:
+                    active_wagers_by_line[wager.line_id] = []
+                active_wagers_by_line[wager.line_id].append(wager)
+        
+        # Get all unique line_ids
+        all_line_ids = set(current_opps_by_line.keys()) | set(active_wagers_by_line.keys())
         
         for line_id in all_line_ids:
-            current_opp = current_opps_by_line.get(line_id)
-            tracked_wager = tracked_wagers_by_line.get(line_id)
+            current_opps = current_opps_by_line.get(line_id, [])
+            active_wagers = active_wagers_by_line.get(line_id, [])
             
-            if current_opp and tracked_wager:
-                # Both exist - check for changes
-                diff = self._compare_wager_vs_opportunity(tracked_wager, current_opp)
-                if diff:
-                    differences.append(diff)
+            if current_opps and active_wagers:
+                # Both exist - check each active wager against recommendations
+                for wager in active_wagers:
+                    # Find matching opportunity for this wager's side
+                    matching_opp = None
+                    for opp in current_opps:
+                        if self._wager_matches_opportunity(wager, opp):
+                            matching_opp = opp
+                            break
+                    
+                    if matching_opp:
+                        # Check if wager needs updating
+                        diff = self._compare_wager_vs_opportunity(wager, matching_opp)
+                        if diff:
+                            differences.append(diff)
+                    else:
+                        # No matching opportunity - cancel this wager
+                        differences.append(WagerDifference(
+                            line_id=line_id,
+                            event_id=wager.event_id,
+                            market_id=wager.market_id,
+                            market_type=wager.market_type,
+                            side=wager.side,
+                            current_odds=wager.odds,
+                            current_stake=wager.stake,
+                            current_status=wager.status,
+                            recommended_odds=0,
+                            recommended_stake=0,
+                            difference_type="remove_opportunity",
+                            action_needed="cancel_wager",
+                            reason="Opportunity no longer recommended",
+                            wager_external_id=wager.external_id,  # ADDED
+                            wager_prophetx_id=wager.prophetx_wager_id  # ADDED
+                        ))
             
-            elif current_opp and not tracked_wager:
-                # New opportunity - should place wager
-                differences.append(WagerDifference(
-                    line_id=line_id,
-                    event_id=current_opp.event_id,
-                    market_id=current_opp.market_id,
-                    market_type=current_opp.market_type,
-                    side=current_opp.side,
-                    current_odds=None,
-                    current_stake=None,
-                    current_status=None,
-                    recommended_odds=current_opp.recommended_odds,
-                    recommended_stake=current_opp.recommended_stake,
-                    difference_type="new_opportunity",
-                    action_needed="place_new_wager",
-                    reason=f"New opportunity detected for {current_opp.market_type}"
-                ))
+            elif current_opps and not active_wagers:
+                # New opportunities - place new wagers
+                for opp in current_opps:
+                    differences.append(WagerDifference(
+                        line_id=line_id,
+                        event_id=opp.event_id,
+                        market_id=opp.market_id,
+                        market_type=opp.market_type,
+                        side=opp.side,
+                        current_odds=None,
+                        current_stake=None,
+                        current_status=None,
+                        recommended_odds=opp.recommended_odds,
+                        recommended_stake=opp.recommended_stake,
+                        difference_type="new_opportunity",
+                        action_needed="place_new_wager",
+                        reason=f"New opportunity detected for {opp.market_type}"
+                    ))
             
-            elif tracked_wager and not current_opp:
-                # Opportunity no longer recommended - should cancel
-                differences.append(WagerDifference(
-                    line_id=line_id,
-                    event_id=tracked_wager.event_id,
-                    market_id=tracked_wager.market_id,
-                    market_type=tracked_wager.market_type,
-                    side=tracked_wager.side,
-                    current_odds=tracked_wager.odds,
-                    current_stake=tracked_wager.stake,
-                    current_status=tracked_wager.status,
-                    recommended_odds=0,
-                    recommended_stake=0,
-                    difference_type="remove_opportunity",
-                    action_needed="cancel_wager",
-                    reason="Opportunity no longer recommended"
-                ))
+            elif active_wagers and not current_opps:
+                # Cancel all active wagers on this line
+                for wager in active_wagers:
+                    differences.append(WagerDifference(
+                        line_id=line_id,
+                        event_id=wager.event_id,
+                        market_id=wager.market_id,
+                        market_type=wager.market_type,
+                        side=wager.side,
+                        current_odds=wager.odds,
+                        current_stake=wager.stake,
+                        current_status=wager.status,
+                        recommended_odds=0,
+                        recommended_stake=0,
+                        difference_type="remove_opportunity",
+                        action_needed="cancel_wager",
+                        reason="Opportunity no longer recommended",
+                        wager_external_id=wager.external_id,  # ADDED
+                        wager_prophetx_id=wager.prophetx_wager_id  # ADDED
+                    ))
         
         return differences
+    
+    def _wager_matches_opportunity(self, wager: TrackedWager, opportunity: CurrentOpportunity) -> bool:
+        """Check if a wager matches an opportunity (same side)"""
+        return (
+            wager.line_id == opportunity.line_id and
+            wager.side == opportunity.side and
+            wager.market_type == opportunity.market_type
+        )
     
     def _compare_wager_vs_opportunity(self, wager: TrackedWager, opportunity: CurrentOpportunity) -> Optional[WagerDifference]:
         """Compare a tracked wager with current opportunity to detect changes"""
