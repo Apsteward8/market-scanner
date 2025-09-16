@@ -284,7 +284,7 @@ class MarketScanningService:
             else:
                 # Multiple opportunities for the same line - keep the one with best odds for other users
                 # Higher absolute value of our_proposed_odds creates better opposing odds
-                best_opportunity = max(group, key=lambda opp: abs(opp.our_proposed_odds))
+                best_opportunity = min(group, key=lambda opp: opp.our_proposed_odds)
                 
                 deduplicated_opportunities.append(best_opportunity)
                 duplicates_removed += len(group) - 1

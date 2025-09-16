@@ -435,8 +435,8 @@ class ProphetXService:
                 # ProphetX response might not have nested "success" field
                 # Check both possible structures
                 if data.get("success") or (not data.get("error") and data.get("data")):
-                    bet_info = data.get("data", data)  # Use data field if available, otherwise use root
-                    bet_id = bet_info.get("bet_id") or bet_info.get("id") or bet_info.get("wager_id")
+                    wager_data = data.get("data", {}).get("wager", {})
+                    bet_id = wager_data.get("id")
                     
                     logger.info(f"✅ Bet placed successfully: ProphetX ID {bet_id}")
                     
@@ -445,7 +445,7 @@ class ProphetXService:
                         "bet_id": bet_id,
                         "prophetx_bet_id": bet_id,
                         "external_id": external_id,
-                        "status": bet_info.get("status", "placed"),
+                        "status": wager_data.get("status", "placed"),
                         "odds": odds,
                         "stake": stake,
                         "line_id": line_id,

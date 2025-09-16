@@ -380,18 +380,32 @@ class HighWagerArbitrageService:
             reason=reason
         )
     
+
     def group_opportunities_by_market(self, opportunities: List[HighWagerOpportunity]) -> Dict[str, List[HighWagerOpportunity]]:
         """Group opportunities by market for conflict detection"""
         markets = {}
         
         for opp in opportunities:
-            # FIXED: Remove line_info from market key since opposing sides have different line_info
-            market_key = f"{opp.event_id}:{opp.market_id}:{opp.market_type}"
+            # FIXED: Include line_info for spreads and totals to separate different lines
+            if opp.market_type in ['spread', 'total', 'totals']:
+                # For spreads/totals, include line info to separate different lines
+                # e.g., "-1.5" vs "-1" should be different markets
+                market_key = f"{opp.event_id}:{opp.market_id}:{opp.market_type}:{opp.line_info}"
+            else:
+                # For moneylines, no line info needed
+                market_key = f"{opp.event_id}:{opp.market_id}:{opp.market_type}"
             
             if market_key not in markets:
                 markets[market_key] = []
             
             markets[market_key].append(opp)
+            
+            # Enhanced logging to verify grouping
+            logger.debug(f"🔑 Grouped opportunity: {opp.event_name} | {opp.market_type} | {opp.large_bet_side} → Market key: {market_key}")
+        
+        # Log final grouping summary
+        for market_key, opps in markets.items():
+            logger.info(f"📊 Market {market_key}: {len(opps)} opportunities - {[f'{o.large_bet_side}' for o in opps]}")
         
         return markets
 
