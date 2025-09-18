@@ -17,6 +17,7 @@ from typing import Dict, List, Optional, Any, Set, Tuple
 from dataclasses import dataclass
 from collections import defaultdict
 import uuid
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -873,10 +874,12 @@ class HighWagerMonitoringService:
                     error=f"Fill wait period: {wait_remaining:.0f}s remaining"
                 )
         
-        # Generate external ID for new wager with more entropy
-        timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
-        unique_suffix = str(uuid.uuid4()).replace('-', '')[:8]
-        external_id = f"monitor_{diff.event_id}_{diff.line_id[:8]}_{timestamp}_{unique_suffix}"
+        # FIXED: Generate external ID with better uniqueness for monitoring
+        timestamp_ms = int(time.time() * 1000)
+        unique_suffix = uuid.uuid4().hex[:8] # Use hex for shorter IDs
+        line_id_short = diff.line_id[:8]
+        
+        external_id = f"monitor_{diff.event_id}_{line_id_short}_{timestamp_ms}_{unique_suffix}"
         
         # Place the wager
         place_result = await self.prophetx_service.place_bet(

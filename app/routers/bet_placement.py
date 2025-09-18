@@ -4,6 +4,7 @@ Bet Placement Router - ENHANCED WITH CANCELLATION ENDPOINTS
 API endpoints for testing and using the high wager bet placement service
 """
 
+import uuid
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, List
 import logging
@@ -304,9 +305,12 @@ async def place_all_opportunities():
                         opportunity = analysis.opportunity
                         sizing = analysis.sizing
                         
-                        # FIXED: Include counter and line_id for guaranteed uniqueness
+                        # FIXED: Better unique external ID generation
                         wager_counter += 1
-                        external_id = f"single_{opportunity.event_id}_{opportunity.line_id[:8]}_{base_timestamp}_{wager_counter:03d}"
+                        timestamp_ms = int(time.time() * 1000)
+                        unique_suffix = uuid.uuid4().hex[:8]
+                        
+                        external_id = f"single_{opportunity.event_id}_{opportunity.line_id[:8]}_{timestamp_ms}_{wager_counter:04d}_{unique_suffix}"
                         
                         wager = {
                             "external_id": external_id,
@@ -331,13 +335,16 @@ async def place_all_opportunities():
                         sizing1 = analysis.bet_1_sizing
                         sizing2 = analysis.bet_2_sizing
                         
-                        # FIXED: Include counter and line_ids for guaranteed uniqueness
+                        # FIXED: Better unique external IDs for arbitrage pairs
                         wager_counter += 1
-                        pair_base = f"arb_{opp1.event_id}_{base_timestamp}_{wager_counter:03d}"
-                        external_id_1 = f"{pair_base}_bet1"
+                        base_timestamp_ms = int(time.time() * 1000)
+                        pair_uuid = str(uuid.uuid4()).hex[:8]
+                        
+                        pair_base = f"arb_{opp1.event_id}_{base_timestamp_ms}_{wager_counter:04d}_{pair_uuid}"
+                        external_id_1 = f"{pair_base}_bet1_{uuid.uuid4().hex[:6]}"
                         
                         wager_counter += 1
-                        external_id_2 = f"{pair_base}_bet2"
+                        external_id_2 = f"{pair_base}_bet2_{uuid.uuid4().hex[:6]}"
                         
                         wager1 = {
                             "external_id": external_id_1,

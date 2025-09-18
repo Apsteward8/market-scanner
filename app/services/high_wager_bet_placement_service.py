@@ -194,8 +194,12 @@ class HighWagerBetPlacementService:
             opportunity = analysis.opportunity
             sizing = analysis.sizing
             
-            # Create external ID
-            external_id = f"single_{opportunity.event_id}_{opportunity.line_id}_{int(time.time() * 1000)}"
+            # FIXED: Create more unique external ID with milliseconds + random suffix
+            timestamp_ms = int(time.time() * 1000)  # Milliseconds precision
+            unique_suffix = uuid.uuid4().hex[:8]  # 8 char random
+            line_id_short = opportunity.line_id[:8]  # First 8 chars of line_id
+            
+            external_id = f"single_{opportunity.event_id}_{line_id_short}_{timestamp_ms}_{unique_suffix}"
             
             # Prepare wager for batch API
             wager = {
@@ -240,10 +244,16 @@ class HighWagerBetPlacementService:
             sizing1 = analysis.bet_1_sizing
             sizing2 = analysis.bet_2_sizing
             
-            # Generate pair ID and external IDs
-            pair_id = self._generate_arbitrage_pair_id(opp1.event_id, opp1.market_id)
-            external_id_1 = f"arb_{pair_id}_bet1_{int(time.time() * 1000)}"
-            external_id_2 = f"arb_{pair_id}_bet2_{int(time.time() * 1000) + 1}"
+            # FIXED: Generate truly unique pair ID and external IDs with better entropy
+            base_timestamp_ms = int(time.time() * 1000)
+            pair_uuid = str(uuid.uuid4()).replace('-', '')[:12]  # 12 chars for pair
+            
+            # Generate pair ID with event and unique identifier
+            pair_id = f"arb_{opp1.event_id}_{pair_uuid}"
+            
+            # Create external IDs with different timestamps and unique suffixes
+            external_id_1 = f"arb_{pair_id}_bet1_{base_timestamp_ms}_{uuid.uuid4().hex[:8]}"
+            external_id_2 = f"arb_{pair_id}_bet2_{base_timestamp_ms + 1}_{uuid.uuid4().hex[:8]}"
             
             # Prepare wagers for batch API
             wager1 = {
@@ -905,7 +915,7 @@ class HighWagerBetPlacementService:
     
     def _generate_external_id(self, request: BetPlacementRequest) -> str:
         """Generate external ID for ProphetX tracking"""
-        unique_suffix = str(uuid.uuid4()).replace('-', '')[:8]
+        unique_suffix = uuid.uuid4().hex[:8]
         return f"{self.external_id_prefix}_{request.opportunity_id}_{unique_suffix}"
     
     def get_placement_summary(self) -> Dict[str, Any]:
