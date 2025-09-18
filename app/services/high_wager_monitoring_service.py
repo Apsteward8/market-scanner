@@ -330,103 +330,36 @@ class HighWagerMonitoringService:
             )
     
     async def _execute_place_new_wager(self, diff: WagerDifference) -> ActionResult:
-        """Place a new wager for a new opportunity"""
+        """
+        Enhanced place new wager with arbitrage checking against existing positions
+        
+        Uses existing market grouping logic to find potential arbitrage conflicts
+        """
         try:
-            # Check exposure limits
-            current_exposure = self.line_exposure[diff.line_id]
-            max_allowed = diff.recommended_stake * self.max_exposure_multiplier
+            # STEP 1: Check if this would create negative arbitrage with existing wagers
+            conflict_result = await self._check_arbitrage_conflict_before_placing(diff)
             
-            if current_exposure + diff.recommended_stake > max_allowed:
+            if conflict_result["action"] == "skip_both":
                 return ActionResult(
-                    success=False,
-                    action_type="place",
+                    success=True,  # Success because we avoided negative arbitrage
+                    action_type="place", 
                     line_id=diff.line_id,
-                    error=f"Would exceed exposure limit: ${current_exposure + diff.recommended_stake:.2f} > ${max_allowed:.2f}"
+                    details={
+                        "action": "skipped_negative_arbitrage",
+                        "reason": conflict_result["reason"],
+                        "cancelled_opposing_wager": conflict_result.get("cancelled_wager")
+                    }
                 )
             
-            # Check fill wait period
-            if diff.line_id in self.recent_fills:
-                fill_time = self.recent_fills[diff.line_id]
-                time_since_fill = (datetime.now(timezone.utc) - fill_time).total_seconds()
-                if time_since_fill < self.fill_wait_period_seconds:
-                    wait_remaining = self.fill_wait_period_seconds - time_since_fill
-                    return ActionResult(
-                        success=False,
-                        action_type="place",
-                        line_id=diff.line_id,
-                        error=f"Fill wait period: {wait_remaining:.0f}s remaining"
-                    )
+            # STEP 2: Continue with existing logic if no conflict
+            return await self._execute_original_place_new_wager(diff)
             
-            # Generate external ID for new wager with more entropy
-            timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
-            unique_suffix = str(uuid.uuid4()).replace('-', '')[:8]
-            external_id = f"monitor_{diff.event_id}_{diff.line_id[:8]}_{timestamp}_{unique_suffix}"
-            
-            # Place the wager
-            place_result = await self.prophetx_service.place_bet(
-                line_id=diff.line_id,
-                odds=diff.recommended_odds,
-                stake=diff.recommended_stake,
-                external_id=external_id
-            )
-            
-            if place_result["success"]:
-                # FIXED: Extract ProphetX wager ID more reliably
-                prophetx_wager_id = (
-                    place_result.get("prophetx_bet_id") or 
-                    place_result.get("bet_id") or 
-                    place_result.get("data", {}).get("wager", {}).get("id") or
-                    "unknown"
-                )
-                
-                # FIXED: Create new tracked wager with proper data
-                tracked_wager = TrackedWager(
-                    external_id=external_id,
-                    prophetx_wager_id=prophetx_wager_id,
-                    line_id=diff.line_id,
-                    event_id=diff.event_id,
-                    market_id=diff.market_id,
-                    market_type=diff.market_type,
-                    side=diff.side,
-                    odds=diff.recommended_odds,
-                    stake=diff.recommended_stake,
-                    status="pending",  # or "unmatched" based on ProphetX response
-                    placed_at=datetime.now(timezone.utc),
-                    last_updated=datetime.now(timezone.utc),
-                    large_bet_combined_size=0,  # Will be updated from opportunity data if available
-                    opportunity_type="single"  # Default for monitoring-placed bets
-                )
-                
-                # FIXED: Add to tracking immediately
-                self.tracked_wagers[external_id] = tracked_wager
-                
-                # Update line exposure
-                self.line_exposure[diff.line_id] += diff.recommended_stake
-                
-                logger.info(f"✅ New wager tracked: {external_id} -> {prophetx_wager_id}")
-                
-                return ActionResult(
-                    success=True,
-                    action_type="place",
-                    line_id=diff.line_id,
-                    external_id=external_id,
-                    prophetx_wager_id=prophetx_wager_id,
-                    details=place_result
-                )
-            else:
-                return ActionResult(
-                    success=False,
-                    action_type="place",
-                    line_id=diff.line_id,
-                    error=place_result.get("error", "Placement failed")
-                )
-                
         except Exception as e:
             return ActionResult(
                 success=False,
                 action_type="place",
-                line_id=diff.line_id,
-                error=f"Exception during placement: {str(e)}"
+                line_id=diff.line_id, 
+                error=f"Exception during arbitrage-checked placement: {str(e)}"
             )
     
     async def _execute_update_wager(self, diff: WagerDifference) -> ActionResult:
@@ -751,6 +684,258 @@ class HighWagerMonitoringService:
             )
         
         return None
+    
+    async def _check_arbitrage_conflict_before_placing(self, diff: WagerDifference) -> Dict[str, Any]:
+        """
+        Check if placing this wager would create negative arbitrage with existing positions
+        
+        Uses the SAME market grouping logic as initial bet placement for consistency
+        """
+        try:
+            # Create a fake opportunity from the difference to use existing logic
+            from app.services.market_scanning_service import HighWagerOpportunity
+            from datetime import datetime, timezone
+            
+            fake_opportunity = HighWagerOpportunity(
+                event_id=diff.event_id,
+                event_name="Monitoring Check",
+                scheduled_time=datetime.now(timezone.utc),
+                tournament_name="",
+                market_id=diff.market_id,
+                line_id=diff.line_id,
+                market_name="",
+                market_type=diff.market_type,
+                line_info=self._extract_line_info_from_side(diff.side, diff.market_type),
+                large_bet_side=diff.side,
+                large_bet_stake_amount=0,
+                large_bet_liquidity_value=0, 
+                large_bet_combined_size=10000,  # Fake size above threshold
+                large_bet_odds=0,
+                available_side="",
+                available_odds=0,
+                available_liquidity_amount=0,
+                our_proposed_odds=diff.recommended_odds
+            )
+            
+            # Look for existing tracked wagers that could pair with this opportunity
+            existing_opportunities = []
+            
+            for external_id, tracked_wager in self.tracked_wagers.items():
+                if (tracked_wager.status in ["pending", "unmatched", "active"] and
+                    tracked_wager.event_id == diff.event_id and
+                    tracked_wager.market_type == diff.market_type):
+                    
+                    # Convert tracked wager back to opportunity format for analysis
+                    existing_opp = HighWagerOpportunity(
+                        event_id=tracked_wager.event_id,
+                        event_name="Existing Wager",
+                        scheduled_time=datetime.now(timezone.utc),
+                        tournament_name="",
+                        market_id=tracked_wager.market_id,
+                        line_id=tracked_wager.line_id,
+                        market_name="",
+                        market_type=tracked_wager.market_type,
+                        line_info=self._extract_line_info_from_side(tracked_wager.side, tracked_wager.market_type),
+                        large_bet_side=tracked_wager.side,
+                        large_bet_stake_amount=0,
+                        large_bet_liquidity_value=0,
+                        large_bet_combined_size=10000,
+                        large_bet_odds=0,
+                        available_side="",
+                        available_odds=0,
+                        available_liquidity_amount=0,
+                        our_proposed_odds=tracked_wager.odds
+                    )
+                    
+                    existing_opportunities.append((existing_opp, tracked_wager))
+            
+            # Use existing arbitrage service to analyze conflicts
+            all_opportunities = [fake_opportunity] + [opp for opp, _ in existing_opportunities]
+            
+            from app.services.high_wager_arbitrage_service import high_wager_arbitrage_service
+            betting_decisions = high_wager_arbitrage_service.detect_conflicts_and_arbitrage(all_opportunities)
+            
+            # Check if our new opportunity would create negative arbitrage
+            for decision in betting_decisions:
+                if (decision["type"] == "opposing_opportunities" and 
+                    decision["action"] == "bet_neither"):  # This indicates negative arbitrage
+                    
+                    # Find which existing wager conflicts
+                    analysis = decision["analysis"]
+                    
+                    # Determine which opportunity corresponds to our new wager vs existing
+                    if analysis.opportunity_1.our_proposed_odds == diff.recommended_odds:
+                        # Our new opportunity is opportunity_1, existing is opportunity_2
+                        conflicting_odds = analysis.opportunity_2.our_proposed_odds
+                    else:
+                        # Our new opportunity is opportunity_2, existing is opportunity_1  
+                        conflicting_odds = analysis.opportunity_1.our_proposed_odds
+                    
+                    # Find and cancel the conflicting existing wager
+                    conflicting_wager = None
+                    for _, tracked_wager in existing_opportunities:
+                        if tracked_wager.odds == conflicting_odds:
+                            conflicting_wager = tracked_wager
+                            break
+                    
+                    if conflicting_wager:
+                        logger.info(f"🚫 Negative arbitrage detected: new {diff.side} @ {diff.recommended_odds:+d} vs existing {conflicting_wager.side} @ {conflicting_wager.odds:+d}")
+                        
+                        # Cancel the existing conflicting wager
+                        cancel_diff = WagerDifference(
+                            line_id=conflicting_wager.line_id,
+                            event_id=conflicting_wager.event_id,
+                            market_id=conflicting_wager.market_id,
+                            market_type=conflicting_wager.market_type,
+                            side=conflicting_wager.side,
+                            current_odds=conflicting_wager.odds,
+                            current_stake=conflicting_wager.stake,
+                            current_status=conflicting_wager.status,
+                            recommended_odds=0,
+                            recommended_stake=0,
+                            difference_type="remove_opportunity",
+                            action_needed="cancel_wager",
+                            reason="Cancelled to avoid negative arbitrage",
+                            wager_external_id=conflicting_wager.external_id,
+                            wager_prophetx_id=conflicting_wager.prophetx_wager_id
+                        )
+                        
+                        cancel_result = await self._execute_cancel_wager(cancel_diff)
+                        
+                        return {
+                            "action": "skip_both",
+                            "reason": f"Cancelled existing {conflicting_wager.side} and skipped new {diff.side} due to negative arbitrage",
+                            "cancelled_wager": cancel_result
+                        }
+            
+            return {"action": "proceed", "reason": "No arbitrage conflicts detected"}
+            
+        except Exception as e:
+            logger.error(f"Error checking arbitrage conflicts: {e}")
+            return {"action": "proceed", "reason": f"Error in conflict check, proceeding: {str(e)}"}
+
+    def _extract_line_info_from_side(self, side: str, market_type: str) -> str:
+        """Extract line info from side name for consistency with opportunity format"""
+        try:
+            market_type_lower = market_type.lower()
+            
+            if market_type_lower in ['total', 'totals']:
+                # Extract "2.5" from "Over 2.5" or "Under 2.5"
+                import re
+                numbers = re.findall(r'\d+(?:\.\d+)?', side)
+                if numbers:
+                    if 'over' in side.lower():
+                        return f"Under {numbers[0]}"
+                    else:
+                        return f"Over {numbers[0]}"
+            
+            elif market_type_lower == 'spread':
+                # Extract spread info like "+0.5" or "-1.5"
+                import re
+                spread_match = re.search(r'[+-]\d+(?:\.\d+)?', side)
+                if spread_match:
+                    return spread_match.group(0)
+                else:
+                    return side
+            
+            # For moneylines or anything else, just return the side
+            return side
+            
+        except Exception:
+            return side
+
+    # REPLACE the original method name in _execute_all_actions
+    async def _execute_original_place_new_wager(self, diff: WagerDifference) -> ActionResult:
+        """Original place new wager logic (unchanged from existing implementation)"""
+        
+        # Check exposure limits
+        current_exposure = self.line_exposure[diff.line_id]
+        max_allowed = diff.recommended_stake * self.max_exposure_multiplier
+        
+        if current_exposure + diff.recommended_stake > max_allowed:
+            return ActionResult(
+                success=False,
+                action_type="place",
+                line_id=diff.line_id,
+                error=f"Would exceed exposure limit: ${current_exposure + diff.recommended_stake:.2f} > ${max_allowed:.2f}"
+            )
+        
+        # Check fill wait period
+        if diff.line_id in self.recent_fills:
+            fill_time = self.recent_fills[diff.line_id]
+            time_since_fill = (datetime.now(timezone.utc) - fill_time).total_seconds()
+            if time_since_fill < self.fill_wait_period_seconds:
+                wait_remaining = self.fill_wait_period_seconds - time_since_fill
+                return ActionResult(
+                    success=False,
+                    action_type="place",
+                    line_id=diff.line_id,
+                    error=f"Fill wait period: {wait_remaining:.0f}s remaining"
+                )
+        
+        # Generate external ID for new wager with more entropy
+        timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
+        unique_suffix = str(uuid.uuid4()).replace('-', '')[:8]
+        external_id = f"monitor_{diff.event_id}_{diff.line_id[:8]}_{timestamp}_{unique_suffix}"
+        
+        # Place the wager
+        place_result = await self.prophetx_service.place_bet(
+            line_id=diff.line_id,
+            odds=diff.recommended_odds,
+            stake=diff.recommended_stake,
+            external_id=external_id
+        )
+        
+        if place_result["success"]:
+            # Extract ProphetX wager ID more reliably
+            prophetx_wager_id = (
+                place_result.get("prophetx_bet_id") or 
+                place_result.get("bet_id") or 
+                place_result.get("data", {}).get("wager", {}).get("id") or
+                "unknown"
+            )
+            
+            # Create new tracked wager with proper data
+            tracked_wager = TrackedWager(
+                external_id=external_id,
+                prophetx_wager_id=prophetx_wager_id,
+                line_id=diff.line_id,
+                event_id=diff.event_id,
+                market_id=diff.market_id,
+                market_type=diff.market_type,
+                side=diff.side,
+                odds=diff.recommended_odds,
+                stake=diff.recommended_stake,
+                status="pending",
+                placed_at=datetime.now(timezone.utc),
+                last_updated=datetime.now(timezone.utc),
+                large_bet_combined_size=0,
+                opportunity_type="single"
+            )
+            
+            # Add to tracking immediately
+            self.tracked_wagers[external_id] = tracked_wager
+            
+            # Update line exposure
+            self.line_exposure[diff.line_id] += diff.recommended_stake
+            
+            logger.info(f"✅ New wager tracked: {external_id} -> {prophetx_wager_id}")
+            
+            return ActionResult(
+                success=True,
+                action_type="place",
+                line_id=diff.line_id,
+                external_id=external_id,
+                prophetx_wager_id=prophetx_wager_id,
+                details=place_result
+            )
+        else:
+            return ActionResult(
+                success=False,
+                action_type="place",
+                line_id=diff.line_id,
+                error=place_result.get("error", "Placement failed")
+            )
     
     # ============================================================================
     # TRACKING AND UTILITY METHODS
