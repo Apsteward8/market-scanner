@@ -477,6 +477,7 @@ class HighWagerMonitoringService:
             current_opportunities = []
             
             for decision in betting_decisions:
+                logger.info(f"🎯 Decision: {decision['type']} | Action: {decision['action']} | Market: {decision.get('market_key', 'unknown')}")
                 if decision["action"] == "bet" and decision["type"] == "single_opportunity":
                     analysis = decision["analysis"]
                     opp = analysis.opportunity
@@ -945,7 +946,7 @@ class HighWagerMonitoringService:
     # ============================================================================
     
     async def _update_tracked_wagers_from_placement_result(self, placement_result: Dict[str, Any], original_opportunities: List = None):
-        """Update tracked wagers from bet placement result"""
+        """Update tracked wagers from bet placement result - FIXED to detect arbitrage pairs"""
         try:
             # Navigate to results via 'data' key
             data = placement_result.get("data", {})
@@ -959,6 +960,9 @@ class HighWagerMonitoringService:
                     opportunity_lookup[opp.line_id] = opp
             
             current_time = datetime.now(timezone.utc)
+            
+            # FIXED: Detect arbitrage pairs by analyzing external IDs
+            arbitrage_pairs_detected = {}
             
             # Track ALL successful wagers from batch_api_result
             for external_id, wager_details in success_wagers.items():
@@ -974,7 +978,38 @@ class HighWagerMonitoringService:
                         "unknown"
                     )
                     
-                    # Create tracked wager
+                    # FIXED: Parse external ID to detect arbitrage pairs
+                    opportunity_type = "single"
+                    arbitrage_pair_id = None
+                    
+                    if external_id.startswith("arb_"):
+                        # This is an arbitrage bet
+                        opportunity_type = "arbitrage"
+                        
+                        # Extract pair ID from external_id like: "arb_19099_abc123_bet1_timestamp_uuid"
+                        try:
+                            # Split and find the pair base (everything before _bet1 or _bet2)
+                            parts = external_id.split("_bet")
+                            if len(parts) >= 2:
+                                pair_base = parts[0]  # "arb_19099_abc123"
+                                bet_number = parts[1][0] if parts[1] else "1"  # "1" or "2"
+                                arbitrage_pair_id = pair_base
+                                opportunity_type = f"arbitrage_{bet_number}"
+                                
+                                # Track this pair
+                                if pair_base not in arbitrage_pairs_detected:
+                                    arbitrage_pairs_detected[pair_base] = []
+                                arbitrage_pairs_detected[pair_base].append(external_id)
+                            else:
+                                # Fallback parsing
+                                arbitrage_pair_id = external_id.split("_bet")[0] if "_bet" in external_id else external_id
+                                opportunity_type = "arbitrage"
+                        except Exception as parse_error:
+                            logger.warning(f"Could not parse arbitrage external_id {external_id}: {parse_error}")
+                            opportunity_type = "arbitrage"  # Still mark as arbitrage even if parsing fails
+                            arbitrage_pair_id = "unknown_pair"
+                    
+                    # Create tracked wager with CORRECT opportunity_type and arbitrage_pair_id
                     tracked_wager = TrackedWager(
                         external_id=external_id,
                         prophetx_wager_id=prophetx_wager_id,
@@ -989,8 +1024,8 @@ class HighWagerMonitoringService:
                         placed_at=current_time,
                         last_updated=current_time,
                         large_bet_combined_size=opportunity.large_bet_combined_size if opportunity else 0,
-                        opportunity_type="single",  # Simplify for now
-                        arbitrage_pair_id=None
+                        opportunity_type=opportunity_type,  # FIXED: Now correctly identifies arbitrage
+                        arbitrage_pair_id=arbitrage_pair_id  # FIXED: Now captures pair ID
                     )
                     
                     self.tracked_wagers[external_id] = tracked_wager
@@ -1002,7 +1037,21 @@ class HighWagerMonitoringService:
                     logger.error(f"Error tracking wager {external_id}: {e}")
                     continue
             
+            # Log arbitrage pair detection results
+            if arbitrage_pairs_detected:
+                logger.info(f"🎯 Arbitrage pairs detected: {len(arbitrage_pairs_detected)} pairs")
+                for pair_id, external_ids in arbitrage_pairs_detected.items():
+                    logger.info(f"   📊 Pair {pair_id}: {len(external_ids)} wagers ({external_ids})")
+            else:
+                logger.info("📊 No arbitrage pairs detected - all single bets")
+            
             logger.info(f"📊 Tracking update complete: {len(self.tracked_wagers)} total tracked wagers")
+            
+            # ADDED: Summary of tracked wager types
+            single_count = len([w for w in self.tracked_wagers.values() if w.opportunity_type == "single"])
+            arbitrage_count = len([w for w in self.tracked_wagers.values() if w.opportunity_type.startswith("arbitrage")])
+            
+            logger.info(f"   📈 Breakdown: {single_count} single bets, {arbitrage_count} arbitrage bets")
             
         except Exception as e:
             logger.error(f"Error in tracking update: {e}", exc_info=True)
