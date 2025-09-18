@@ -386,11 +386,21 @@ class HighWagerArbitrageService:
         markets = {}
         
         for opp in opportunities:
-            # FIXED: Include line_info for spreads and totals to separate different lines
             if opp.market_type in ['spread', 'total', 'totals']:
-                # For spreads/totals, include line info to separate different lines
-                # e.g., "-1.5" vs "-1" should be different markets
-                market_key = f"{opp.event_id}:{opp.market_id}:{opp.market_type}:{opp.line_info}"
+                if opp.market_type in ['total', 'totals']:
+                    # FIXED: For totals, extract just the number to group Over/Under together
+                    # Extract number from line_info like "Under 50" or "Over 50" → "50"
+                    import re
+                    numbers = re.findall(r'\d+(?:\.\d+)?', opp.line_info)
+                    if numbers:
+                        line_value = numbers[0]  # Use just the number (50)
+                        market_key = f"{opp.event_id}:{opp.market_id}:{opp.market_type}:{line_value}"
+                    else:
+                        # Fallback if regex fails
+                        market_key = f"{opp.event_id}:{opp.market_id}:{opp.market_type}"
+                else:
+                    # For spreads, keep existing logic (different spreads ARE different markets)
+                    market_key = f"{opp.event_id}:{opp.market_id}:{opp.market_type}:{opp.line_info}"
             else:
                 # For moneylines, no line info needed
                 market_key = f"{opp.event_id}:{opp.market_id}:{opp.market_type}"
