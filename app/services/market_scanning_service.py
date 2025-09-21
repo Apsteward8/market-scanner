@@ -666,29 +666,63 @@ class MarketScanningService:
             # Extract line information
             line_info = self._extract_line_info(market, available_side)
             
-            # FIXED: Find the line_id for the side we want to bet on (large_bet_side)
             line_id_for_betting = None
             market_id_for_arbitrage = str(market.get('id', ''))
-            
-            # Search through all selections to find the one matching large_bet_side
+
+            # Enhanced debugging: Log all available selections first
+            logger.info(f"🔍 Searching for line_id for target: '{large_bet_side}'")
+            logger.info(f"   Available selections in market:")
+
+            all_selections_debug = []
+            for side_idx, side_group in enumerate(selections):
+                if not side_group:
+                    continue
+                for sel_idx, selection in enumerate(side_group):
+                    selection_name = selection.get('display_name', '').strip()
+                    line_id = str(selection.get('line_id', ''))
+                    all_selections_debug.append({
+                        'name': selection_name,
+                        'line_id': line_id,
+                        'side_idx': side_idx,
+                        'sel_idx': sel_idx
+                    })
+                    logger.info(f"   [{side_idx}][{sel_idx}] '{selection_name}' -> line_id: {line_id}")
+
+            # Now search for the match with detailed logging
             for side_group in selections:
                 if not side_group:
                     continue
                 for selection in side_group:
                     selection_name = selection.get('display_name', '').strip()
+                    selection_line_id = str(selection.get('line_id', ''))
                     
-                    # Check if this selection matches the large_bet_side
-                    if self._is_same_side(selection_name, large_bet_side, market.get('type', '')):
-                        line_id_for_betting = str(selection.get('line_id', ''))
-                        logger.info(f"✅ Found betting line_id: {line_id_for_betting} for {large_bet_side}")
+                    # Test the matching logic with detailed logging
+                    is_match = self._is_same_side(selection_name, large_bet_side, market.get('type', ''))
+                    
+                    logger.debug(f"   Testing: '{selection_name}' vs '{large_bet_side}' -> Match: {is_match}")
+                    
+                    if is_match:
+                        line_id_for_betting = selection_line_id
+                        logger.info(f"✅ MATCH FOUND: '{large_bet_side}' -> line_id: {line_id_for_betting}")
+                        logger.info(f"   Selection: '{selection_name}' from line_id: {selection_line_id}")
                         break
                 if line_id_for_betting:
                     break
-            
-            # Validation
+
+            # Enhanced error reporting if no match found
             if not line_id_for_betting:
-                logger.error(f"❌ Could not find line_id for large_bet_side '{large_bet_side}' in selections")
-                logger.error(f"   Available selections: {[s.get('display_name') for side_group in selections for s in side_group if s]}")
+                logger.error(f"❌ CRITICAL: Could not find line_id for large_bet_side '{large_bet_side}'")
+                logger.error(f"   Market type: {market.get('type', '')}")
+                logger.error(f"   Available selections with line_ids:")
+                for sel_debug in all_selections_debug:
+                    logger.error(f"     '{sel_debug['name']}' -> {sel_debug['line_id']}")
+                
+                # Test each selection individually to see which ones almost match
+                logger.error(f"   Testing each selection against target '{large_bet_side}':")
+                for sel_debug in all_selections_debug:
+                    test_match = self._is_same_side(sel_debug['name'], large_bet_side, market.get('type', ''))
+                    logger.error(f"     '{sel_debug['name']}' -> {test_match}")
+                
                 return None
                 
             if not market_id_for_arbitrage:
@@ -723,13 +757,13 @@ class MarketScanningService:
             return None
         
     def _is_same_side(self, selection_name: str, target_side: str, market_type: str) -> bool:
-        """Check if a selection name matches the target side we want to bet on"""
+        """Check if a selection name matches the target side we want to bet on - FIXED VERSION"""
         
         # Clean both names for comparison
         selection_clean = selection_name.lower().strip()
         target_clean = target_side.lower().strip()
         
-        # Direct match - this should catch most cases
+        # Direct exact match - this should catch most cases
         if selection_clean == target_clean:
             return True
         
@@ -764,29 +798,62 @@ class MarketScanningService:
             # If we can't extract numbers properly, fall back to exact match
             return selection_clean == target_clean
         
-        # For team names and spread markets, check if team name is contained in selection
-        # Handle cases like "TCU Horned Frogs" vs "TCU Horned Frogs -1.5"
-        target_words = [word for word in target_clean.split() if len(word) > 2]
+        # FIXED: Much more precise team name matching for moneylines and spreads
+        # Extract the core team names from both strings, removing odds and extra formatting
+        import re
         
-        # Check if significant words from target are in selection
-        if target_words and any(word in selection_clean for word in target_words):
-            # Additional validation for spread markets
-            if market_type_lower == 'spread':
-                # For spreads, also check that the spread direction matches if present
-                import re
-                target_spread = re.findall(r'[+-]\d+(?:\.\d+)?', target_clean)
-                selection_spread = re.findall(r'[+-]\d+(?:\.\d+)?', selection_clean)
-                
-                # If both have spreads, they must match
-                if target_spread and selection_spread:
-                    return target_spread[0] == selection_spread[0]
-            
+        # Remove odds patterns like "+164", "-180" from selection_name
+        selection_team = re.sub(r'\s*[+-]\d+\s*$', '', selection_clean).strip()
+        
+        # Remove odds patterns from target_side as well
+        target_team = re.sub(r'\s*[+-]\d+\s*$', '', target_clean).strip()
+        
+        # For exact team name matches after removing odds
+        if selection_team == target_team:
             return True
         
-        # Check if target is contained in selection (like "TCU" in "TCU Horned Frogs")  
-        if target_clean in selection_clean or selection_clean in target_clean:
-            return True
+        # For spread markets, ensure the spread values match if both have spreads
+        if market_type_lower == 'spread':
+            target_spread = re.findall(r'[+-]\d+(?:\.\d+)?', target_clean)
+            selection_spread = re.findall(r'[+-]\d+(?:\.\d+)?', selection_clean)
             
+            # If both have spreads, they must match exactly
+            if target_spread and selection_spread:
+                # Only match if team names are similar AND spreads are identical
+                if target_spread[0] == selection_spread[0]:
+                    # Check if team names are substantially similar
+                    target_words = set(target_team.split())
+                    selection_words = set(selection_team.split())
+                    
+                    # Require significant overlap in team name words
+                    common_words = target_words.intersection(selection_words)
+                    min_required_overlap = min(len(target_words), len(selection_words)) * 0.6
+                    
+                    return len(common_words) >= min_required_overlap
+                else:
+                    return False
+        
+        # FIXED: For team name matching, require much stricter criteria
+        # Split team names into words and check for substantial overlap
+        target_words = set([word for word in target_team.split() if len(word) > 2])
+        selection_words = set([word for word in selection_team.split() if len(word) > 2])
+        
+        # Require substantial word overlap for team matching
+        if target_words and selection_words:
+            common_words = target_words.intersection(selection_words)
+            
+            # Require at least 70% of the shorter name's words to overlap
+            min_words = min(len(target_words), len(selection_words))
+            required_overlap = max(1, int(min_words * 0.7))
+            
+            # Also check that we have meaningful words, not just single characters
+            meaningful_overlap = len([word for word in common_words if len(word) > 2])
+            
+            return meaningful_overlap >= required_overlap
+        
+        # REMOVED: The overly broad substring matching that was causing the bug
+        # OLD BUGGY CODE: if target_clean in selection_clean or selection_clean in target_clean:
+        
         return False
         
     def _calculate_undercut_odds(self, original_odds: int) -> int:
