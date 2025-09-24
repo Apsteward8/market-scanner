@@ -196,7 +196,7 @@ async def get_sports_events():
             "message": f"Found {len(formatted_events)} upcoming sports events",
             "data": {
                 "events": formatted_events,
-                "scan_window_hours": 24,
+                "scan_window_hours": 12,
                 "current_time": datetime.now(timezone.utc).isoformat()
             }
         }

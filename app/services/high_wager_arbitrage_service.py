@@ -160,9 +160,9 @@ class HighWagerArbitrageService:
         
         # One positive, one negative after commission
         if adj_odds1.is_plus and not adj_odds2.is_plus:
-            return abs(adj_odds1.adjusted_odds) > abs(adj_odds2.adjusted_odds)
+            return abs(adj_odds1.adjusted_odds) >= abs(adj_odds2.adjusted_odds)
         elif not adj_odds1.is_plus and adj_odds2.is_plus:
-            return abs(adj_odds2.adjusted_odds) > abs(adj_odds1.adjusted_odds)
+            return abs(adj_odds2.adjusted_odds) >= abs(adj_odds1.adjusted_odds)
         
         return False
     

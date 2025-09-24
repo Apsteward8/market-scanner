@@ -129,13 +129,13 @@ class MarketScanningService:
         self.sport_tournament_mapping = self.settings.sport_tournament_mapping
         
         # Scanning parameters from settings
-        self.min_stake_threshold = self.settings.min_stake_threshold  # $10000
-        self.min_individual_threshold = 2500.0  # Both stake and value must be > $2500
+        # self.min_stake_threshold = self.settings.min_stake_threshold  # $10000
+        # self.min_individual_threshold = 2500.0  # Both stake and value must be > $2500
         self.undercut_improvement = self.settings.undercut_improvement  # 1 point
         self.commission_rate = self.settings.prophetx_commission_rate  # 3%
         
         # Time window for events (next 24 hours)
-        self.scan_window_hours = 24
+        self.scan_window_hours = 12
         
         # Focus on main line markets
         self.main_line_categories = {"Game Lines"}
@@ -428,32 +428,39 @@ class MarketScanningService:
             return "Unknown Home", "Unknown Away"
 
     def _should_process_opportunity(self, opportunity: HighWagerOpportunity, sport: str) -> bool:
-        """Check if opportunity meets sport-specific thresholds"""
-        # Since SportEvent doesn't have sport_name, we need to determine sport from tournament_id
-        # We can pass the sport from the calling context or determine it from tournament_id
-        tournament_id = getattr(opportunity, 'tournament_id', '')
+        """Check if opportunity meets sport and market-specific thresholds"""
         
-        # Map tournament_id back to sport
-        sport_from_tournament = None
-        for s, tid in self.sport_tournament_mapping.items():
-            if tid == tournament_id:
-                sport_from_tournament = s
-                break
+        # Get market type from opportunity
+        market_type = getattr(opportunity, 'market_type', 'moneyline')
         
-        # Use the passed sport parameter or the one determined from tournament
-        sport_key = sport.lower() if sport else sport_from_tournament
+        # Get thresholds using hierarchical lookup
+        min_stake = self.settings.get_threshold(sport, market_type, 'min_stake_threshold')
+        min_individual = self.settings.get_threshold(sport, market_type, 'min_individual_threshold')
         
-        # Get sport-specific minimum stake or use default
-        min_stake = self.sport_min_stakes.get(sport_key, self.settings.min_stake_threshold)
+        # Check thresholds
         combined_size = opportunity.large_bet_combined_size
+        stake_amount = opportunity.large_bet_stake_amount
+        liquidity_value = opportunity.large_bet_liquidity_value
         
-        # Check if opportunity meets the threshold for this sport
-        meets_threshold = combined_size >= min_stake
+        meets_combined = combined_size >= min_stake
+        meets_individual = (stake_amount >= min_individual and 
+                        liquidity_value >= min_individual)
         
-        if not meets_threshold:
-            logger.debug(f"Opportunity below {sport_key.upper()} threshold: ${combined_size:,.0f} < ${min_stake:,.0f}")
+        if not meets_combined or not meets_individual:
+            logger.debug(
+                f"Opportunity below {sport.upper()}:{market_type.upper()} thresholds: "
+                f"Combined ${combined_size:,.0f} vs ${min_stake:,.0f}, "
+                f"Individual ${stake_amount:,.0f}/${liquidity_value:,.0f} vs ${min_individual:,.0f}"
+            )
+            return False
         
-        return meets_threshold
+        logger.info(
+            f"✅ Opportunity meets {sport.upper()}:{market_type.upper()} thresholds: "
+            f"Combined ${combined_size:,.0f} >= ${min_stake:,.0f}, "
+            f"Individual ${stake_amount:,.0f}/${liquidity_value:,.0f} >= ${min_individual:,.0f}"
+        )
+        
+        return True
 
     # async def _get_upcoming_events(self) -> List[SportEvent]:
     #     """Get upcoming NCAAF events in the scan window"""
@@ -596,10 +603,20 @@ class MarketScanningService:
                             combined = stake + value
 
                             # Use both the combined and individual thresholds
+                            # NEW: Get market-specific thresholds dynamically
+                            market_type = market_ctx.get('type', 'moneyline')
+
+                            # Determine sport from event (you'll need to pass this)
+                            sport = self._determine_sport_from_event(event)
+
+                            min_stake = self.settings.get_threshold(sport, market_type, 'min_stake_threshold')
+                            min_individual = self.settings.get_threshold(sport, market_type, 'min_individual_threshold')
+
+                            # Use the dynamic thresholds instead of hardcoded ones
                             if (
-                                combined >= self.min_stake_threshold
-                                and stake >= self.min_individual_threshold
-                                and value >= self.min_individual_threshold
+                                combined >= min_stake
+                                and stake >= min_individual
+                                and value >= min_individual
                             ):
                                 opp = await self._create_opportunity(
                                     event=event,
@@ -632,6 +649,18 @@ class MarketScanningService:
                 continue
         
         return opportunities
+    
+    def _determine_sport_from_event(self, event: SportEvent) -> str:
+        """Determine sport from event tournament_id"""
+        tournament_id = getattr(event, 'tournament_id', '')
+        
+        # Map tournament_id back to sport
+        for sport, tid in self.sport_tournament_mapping.items():
+            if tid == tournament_id:
+                return sport
+        
+        # Fallback - return 'unknown' which will use global defaults
+        return 'unknown'
     
     async def _create_opportunity(self, event: SportEvent, market: Dict[str, Any], 
                                 selections: List[List[Dict[str, Any]]], 

@@ -27,9 +27,91 @@ class Settings(BaseSettings):
     # =============================================================================
     # Market Scanner Strategy Settings  
     # =============================================================================
-    min_stake_threshold: float = Field(10000.0, description="Minimum combined stake + value to follow")
-    min_individual_threshold: float = Field(2500.0, description="Minimum individual stake and value required")
+    min_stake_threshold: float = Field(12500.0, description="Global minimum combined threshold")
+    min_individual_threshold: float = Field(5000.0, description="Global minimum individual threshold")
     undercut_improvement: int = Field(1, description="Odds improvement points (deprecated - now uses odds ladder)")
+    
+    # Sport-specific defaults (new)
+    nfl_min_stake_threshold: Optional[float] = Field(None, description="NFL default minimum combined")
+    nfl_min_individual_threshold: Optional[float] = Field(None, description="NFL default minimum individual")
+    
+    wnba_min_stake_threshold: Optional[float] = Field(None, description="WNBA default minimum combined")
+    wnba_min_individual_threshold: Optional[float] = Field(None, description="WNBA default minimum individual")
+    
+    mlb_min_stake_threshold: Optional[float] = Field(None, description="MLB default minimum combined")
+    mlb_min_individual_threshold: Optional[float] = Field(None, description="MLB default minimum individual")
+
+    ncaaf_min_stake_threshold: Optional[float] = Field(None, description="NCAAF default minimum combined")
+    ncaaf_min_individual_threshold: Optional[float] = Field(None, description="NCAAF default minimum individual")
+    
+    champions_league_min_stake_threshold: Optional[float] = Field(None, description="Champions League default minimum combined")
+    champions_league_min_individual_threshold: Optional[float] = Field(None, description="Champions League default minimum individual")
+    
+    europa_league_min_stake_threshold: Optional[float] = Field(None, description="Europa League default minimum combined")
+    europa_league_min_individual_threshold: Optional[float] = Field(None, description="Europa League default minimum individual")
+
+    laliga_min_stake_threshold: Optional[float] = Field(None, description="LaLiga default minimum combined")
+    laliga_min_individual_threshold: Optional[float] = Field(None, description="LaLiga default minimum individual")
+
+    mls_min_stake_threshold: Optional[float] = Field(None, description="MLS default minimum combined")
+    mls_min_individual_threshold: Optional[float] = Field(None, description="MLS default minimum individual")
+
+    # Market-specific thresholds (new)
+    nfl_spread_min_stake_threshold: Optional[float] = Field(None)
+    nfl_spread_min_individual_threshold: Optional[float] = Field(None)
+    nfl_total_min_stake_threshold: Optional[float] = Field(None)
+    nfl_total_min_individual_threshold: Optional[float] = Field(None)
+    nfl_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    nfl_moneyline_min_individual_threshold: Optional[float] = Field(None)
+    
+    wnba_spread_min_stake_threshold: Optional[float] = Field(None)
+    wnba_spread_min_individual_threshold: Optional[float] = Field(None)
+    wnba_total_min_stake_threshold: Optional[float] = Field(None)
+    wnba_total_min_individual_threshold: Optional[float] = Field(None)
+    wnba_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    wnba_moneyline_min_individual_threshold: Optional[float] = Field(None)
+
+    ncaaf_spread_min_stake_threshold: Optional[float] = Field(None)
+    ncaaf_spread_min_individual_threshold: Optional[float] = Field(None)
+    ncaaf_total_min_stake_threshold: Optional[float] = Field(None)
+    ncaaf_total_min_individual_threshold: Optional[float] = Field(None)
+    ncaaf_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    ncaaf_moneyline_min_individual_threshold: Optional[float] = Field(None)
+    
+    mlb_spread_min_stake_threshold: Optional[float] = Field(None)
+    mlb_spread_min_individual_threshold: Optional[float] = Field(None)
+    mlb_total_min_stake_threshold: Optional[float] = Field(None)
+    mlb_total_min_individual_threshold: Optional[float] = Field(None)
+    mlb_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    mlb_moneyline_min_individual_threshold: Optional[float] = Field(None)
+    
+    champions_league_spread_min_stake_threshold: Optional[float] = Field(None)
+    champions_league_spread_min_individual_threshold: Optional[float] = Field(None)
+    champions_league_total_min_stake_threshold: Optional[float] = Field(None)
+    champions_league_total_min_individual_threshold: Optional[float] = Field(None)
+    champions_league_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    champions_league_moneyline_min_individual_threshold: Optional[float] = Field(None)
+    
+    europa_league_spread_min_stake_threshold: Optional[float] = Field(None)
+    europa_league_spread_min_individual_threshold: Optional[float] = Field(None)
+    europa_league_total_min_stake_threshold: Optional[float] = Field(None)
+    europa_league_total_min_individual_threshold: Optional[float] = Field(None)
+    europa_league_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    europa_league_moneyline_min_individual_threshold: Optional[float] = Field(None)
+
+    laliga_spread_min_stake_threshold: Optional[float] = Field(None)
+    laliga_spread_min_individual_threshold: Optional[float] = Field(None)
+    laliga_total_min_stake_threshold: Optional[float] = Field(None)
+    laliga_total_min_individual_threshold: Optional[float] = Field(None)
+    laliga_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    laliga_moneyline_min_individual_threshold: Optional[float] = Field(None)
+    
+    mls_spread_min_stake_threshold: Optional[float] = Field(None)
+    mls_spread_min_individual_threshold: Optional[float] = Field(None)
+    mls_total_min_stake_threshold: Optional[float] = Field(None)
+    mls_total_min_individual_threshold: Optional[float] = Field(None)
+    mls_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    mls_moneyline_min_individual_threshold: Optional[float] = Field(None)
     
     # =============================================================================
     # Risk Management Settings
@@ -60,7 +142,7 @@ class Settings(BaseSettings):
     # Multi-Sport Configuration
     # =============================================================================
     target_sports: str = Field("ncaaf,mlb", description="Comma-separated list of sports to scan")
-    scan_window_hours: int = Field(24, description="Hours to look ahead for events")
+    scan_window_hours: int = Field(12, description="Hours to look ahead for events")
     
     # ProphetX Tournament IDs  
     ncaaf_tournament_id: str = Field("27653", description="ProphetX NCAAF tournament ID")
@@ -70,6 +152,9 @@ class Settings(BaseSettings):
     nhl_tournament_id: Optional[str] = Field(None, description="ProphetX NHL tournament ID")
     wnba_tournament_id: Optional[str] = Field(None, description="ProphetX WNBA tournament ID")
     champions_league_tournament_id: Optional[str] = Field(None, description="ProphetX Champions League tournament ID")
+    europa_league_tournament_id: Optional[str] = Field(None, description="ProphetX Europa League tournament ID")
+    laliga_tournament_id: Optional[str] = Field(None, description="ProphetX LaLiga tournament ID")
+    mls_tournament_id: Optional[str] = Field(None, description="ProphetX MLS tournament ID")
 
     # =============================================================================
     # Computed Properties
@@ -130,6 +215,12 @@ class Settings(BaseSettings):
             mapping['wnba'] = self.wnba_tournament_id
         if 'champions_league' in self.target_sports_list and self.champions_league_tournament_id:
             mapping['champions_league'] = self.champions_league_tournament_id
+        if 'europa_league' in self.target_sports_list and self.europa_league_tournament_id:
+            mapping['europa_league'] = self.europa_league_tournament_id
+        if 'laliga' in self.target_sports_list and self.laliga_tournament_id:
+            mapping['laliga'] = self.laliga_tournament_id
+        if 'mls' in self.target_sports_list and self.mls_tournament_id:
+            mapping['mls'] = self.mls_tournament_id
         return mapping
     
     def get_sport_display_name(self, sport: str) -> str:
@@ -141,7 +232,10 @@ class Settings(BaseSettings):
             'nba': 'NBA',
             'nhl': 'NHL',
             'wnba': 'WNBA',
-            'champions_league': 'Champions League'
+            'champions_league': 'Champions League',
+            'europa_league': 'Europa League',
+            'laliga': 'LaLiga',
+            'mls': 'MLS'
         }
         return sport_names.get(sport.lower(), sport.upper())
     
@@ -195,6 +289,36 @@ class Settings(BaseSettings):
                 "commission_rate": f"{self.prophetx_commission_rate:.1%}"
             }
         }
+        
+    def get_threshold(self, sport: str, market_type: str, threshold_type: str) -> float:
+        """
+        Get the appropriate threshold using hierarchical priority:
+        1. Market-specific for sport (highest priority)
+        2. Sport-specific default (medium priority)  
+        3. Global default (lowest priority)
+        """
+        sport_key = sport.lower()
+        market_key = market_type.lower()
+        
+        # Normalize market type names
+        if market_key in ['total', 'totals']:
+            market_key = 'total'
+        
+        # 1. Try market-specific threshold first (highest priority)
+        market_specific_attr = f"{sport_key}_{market_key}_{threshold_type.lower()}"
+        market_specific_value = getattr(self, market_specific_attr, None)
+        if market_specific_value is not None:
+            return market_specific_value
+        
+        # 2. Try sport-specific default (medium priority)
+        sport_specific_attr = f"{sport_key}_{threshold_type.lower()}"  
+        sport_specific_value = getattr(self, sport_specific_attr, None)
+        if sport_specific_value is not None:
+            return sport_specific_value
+        
+        # 3. Fall back to global default (lowest priority)
+        global_attr = threshold_type.lower()
+        return getattr(self, global_attr)
     
     class Config:
         env_file = ".env"
