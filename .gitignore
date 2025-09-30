@@ -34,5 +34,5 @@ LOG_LEVEL=INFO
 SAVE_SCAN_HISTORY=true
 
 # ProphetX Commission Settings
-PROPHETX_COMMISSION_RATE=0.03       # 3% commission rate on winning bets
+PROPHETX_COMMISSION_RATE=0.01       # 1% commission rate on winning bets
 BREAK_EVEN_BUFFER=0.01              # 1% buffer above break-even for profitability

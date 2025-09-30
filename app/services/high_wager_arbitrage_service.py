@@ -13,11 +13,11 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class CommissionAdjustedOdds:
-    """Odds adjusted for ProphetX's 3% commission"""
+    """Odds adjusted for ProphetX's 1% commission"""
     original_odds: int
     adjusted_odds: float
     is_plus: bool  # True if adjusted odds are positive, False if negative
-    commission_rate: float = 0.03
+    commission_rate: float = 0.01
 
 @dataclass
 class BetSizingResult:
@@ -54,13 +54,13 @@ class HighWagerArbitrageService:
     """Service for analyzing arbitrage opportunities in high wager following"""
     
     def __init__(self):
-        self.commission_rate = 0.03  # ProphetX's 3% commission
+        self.commission_rate = 0.01  # ProphetX's 1% commission
         self.base_bet_amount = 100.0  # $100 base bet for plus odds
         self.target_win_amount = 100.0  # Target $100 win for minus odds (after commission)
     
     def apply_commission_adjustment(self, odds: int) -> CommissionAdjustedOdds:
         """
-        Apply 3% commission to calculate effective odds in proper American format
+        Apply 1% commission to calculate effective odds in proper American format
         
         Commission is taken from winnings AFTER we win, affecting our true return
         """
@@ -142,7 +142,7 @@ class HighWagerArbitrageService:
         """
         Check if two opposing odds represent an arbitrage opportunity after commission
         
-        Rules (accounting for 3% commission with proper American odds conversion):
+        Rules (accounting for 1% commission with proper American odds conversion):
         1. Both positive after commission: Always arbitrage
         2. One positive, one negative: Arbitrage if abs(positive) > abs(negative) after commission
         3. Both negative after commission: Never arbitrage
@@ -173,7 +173,7 @@ class HighWagerArbitrageService:
         Strategy:
         1. Bet $100 on the MORE FAVORABLE odds (regardless of sign)
         2. Calculate EXACT stake needed on less favorable odds to match total payout precisely
-        3. Account for 3% commission on all winnings with high precision
+        3. Account for 1% commission on all winnings with high precision
         
         Returns: (stake_on_odds1, stake_on_odds2, guaranteed_profit)
         """
@@ -224,13 +224,13 @@ class HighWagerArbitrageService:
             # Negative odds: gross_winnings = stake * (100/abs(odds))
             gross_winnings = better_bet * (Decimal('100') / Decimal(str(abs(better_odds_original))))
         
-        commission = gross_winnings * Decimal('0.03')
+        commission = gross_winnings * Decimal('0.01')
         net_winnings = gross_winnings - commission
         target_payout = better_bet + net_winnings
         
         # Step 3: Calculate EXACT stake needed on worse odds to achieve target payout
         # We need: worse_bet + worse_net_winnings = target_payout
-        # Where: worse_net_winnings = worse_gross_winnings * (1 - 0.03)
+        # Where: worse_net_winnings = worse_gross_winnings * (1 - 0.01)
         
         if worse_odds_original > 0:
             # Positive odds: gross_winnings = stake * (odds/100)
@@ -255,7 +255,7 @@ class HighWagerArbitrageService:
         else:
             worse_gross = worse_bet * (Decimal('100') / Decimal(str(abs(worse_odds_original))))
         
-        worse_commission = worse_gross * Decimal('0.03')
+        worse_commission = worse_gross * Decimal('0.01')
         worse_net = worse_gross - worse_commission
         worse_payout = worse_bet + worse_net
         

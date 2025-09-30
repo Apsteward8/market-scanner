@@ -105,7 +105,7 @@ async def root():
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "docs": "/docs",
         "new_features": [
-            "High wager arbitrage detection with 3% commission adjustment",
+            "High wager arbitrage detection with 1% commission adjustment",
             "Automated bet sizing ($100 plus, bet-to-win-$100 minus)",
             "Conflict resolution for opposing opportunities"
         ]

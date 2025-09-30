@@ -132,7 +132,7 @@ class MarketScanningService:
         # self.min_stake_threshold = self.settings.min_stake_threshold  # $10000
         # self.min_individual_threshold = 2500.0  # Both stake and value must be > $2500
         self.undercut_improvement = self.settings.undercut_improvement  # 1 point
-        self.commission_rate = self.settings.prophetx_commission_rate  # 3%
+        self.commission_rate = self.settings.prophetx_commission_rate  # 1%
         
         # Time window for events (next 24 hours)
         self.scan_window_hours = 12

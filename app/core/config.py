@@ -52,9 +52,24 @@ class Settings(BaseSettings):
 
     laliga_min_stake_threshold: Optional[float] = Field(None, description="LaLiga default minimum combined")
     laliga_min_individual_threshold: Optional[float] = Field(None, description="LaLiga default minimum individual")
+    
+    premier_league_min_stake_threshold: Optional[float] = Field(None, description="Premier League default minimum combined")
+    premier_league_min_individual_threshold: Optional[float] = Field(None, description="Premier League default minimum individual")
+    
+    bundesliga_min_stake_threshold: Optional[float] = Field(None, description="Bundesliga default minimum combined")
+    bundesliga_min_individual_threshold: Optional[float] = Field(None, description="Bundesliga default minimum individual")
+    
+    serie_a_min_stake_threshold: Optional[float] = Field(None, description="Serie A default minimum combined")
+    serie_a_min_individual_threshold: Optional[float] = Field(None, description="Serie A default minimum individual")
+    
+    ligue_1_min_stake_threshold: Optional[float] = Field(None, description="Ligue 1 default minimum combined")
+    ligue_1_min_individual_threshold: Optional[float] = Field(None, description="Ligue 1 default minimum individual")
 
     mls_min_stake_threshold: Optional[float] = Field(None, description="MLS default minimum combined")
     mls_min_individual_threshold: Optional[float] = Field(None, description="MLS default minimum individual")
+
+    cfl_min_stake_threshold: Optional[float] = Field(None, description="CFL default minimum combined")
+    cfl_min_individual_threshold: Optional[float] = Field(None, description="CFL default minimum individual")
 
     # Market-specific thresholds (new)
     nfl_spread_min_stake_threshold: Optional[float] = Field(None)
@@ -106,6 +121,41 @@ class Settings(BaseSettings):
     laliga_moneyline_min_stake_threshold: Optional[float] = Field(None)
     laliga_moneyline_min_individual_threshold: Optional[float] = Field(None)
     
+    premier_league_spread_min_stake_threshold: Optional[float] = Field(None)
+    premier_league_spread_min_individual_threshold: Optional[float] = Field(None)
+    premier_league_total_min_stake_threshold: Optional[float] = Field(None)
+    premier_league_total_min_individual_threshold: Optional[float] = Field(None)
+    premier_league_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    premier_league_moneyline_min_individual_threshold: Optional[float] = Field(None)
+    
+    bundesliga_spread_min_stake_threshold: Optional[float] = Field(None)
+    bundesliga_spread_min_individual_threshold: Optional[float] = Field(None)
+    bundesliga_total_min_stake_threshold: Optional[float] = Field(None)
+    bundesliga_total_min_individual_threshold: Optional[float] = Field(None)
+    bundesliga_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    bundesliga_moneyline_min_individual_threshold: Optional[float] = Field(None)
+    
+    serie_a_spread_min_stake_threshold: Optional[float] = Field(None)
+    serie_a_spread_min_individual_threshold: Optional[float] = Field(None)
+    serie_a_total_min_stake_threshold: Optional[float] = Field(None)
+    serie_a_total_min_individual_threshold: Optional[float] = Field(None)
+    serie_a_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    serie_a_moneyline_min_individual_threshold: Optional[float] = Field(None)
+    
+    ligue_1_spread_min_stake_threshold: Optional[float] = Field(None)
+    ligue_1_spread_min_individual_threshold: Optional[float] = Field(None)
+    ligue_1_total_min_stake_threshold: Optional[float] = Field(None)
+    ligue_1_total_min_individual_threshold: Optional[float] = Field(None)
+    ligue_1_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    ligue_1_moneyline_min_individual_threshold: Optional[float] = Field(None)
+    
+    cfl_spread_min_stake_threshold: Optional[float] = Field(None)
+    cfl_spread_min_individual_threshold: Optional[float] = Field(None)
+    cfl_total_min_stake_threshold: Optional[float] = Field(None)
+    cfl_total_min_individual_threshold: Optional[float] = Field(None)
+    cfl_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    cfl_moneyline_min_individual_threshold: Optional[float] = Field(None)
+    
     mls_spread_min_stake_threshold: Optional[float] = Field(None)
     mls_spread_min_individual_threshold: Optional[float] = Field(None)
     mls_total_min_stake_threshold: Optional[float] = Field(None)
@@ -135,7 +185,7 @@ class Settings(BaseSettings):
     # =============================================================================
     # ProphetX Commission Settings
     # =============================================================================
-    prophetx_commission_rate: float = Field(0.03, description="ProphetX commission rate on winning bets")
+    prophetx_commission_rate: float = Field(0.01, description="ProphetX commission rate on winning bets")
     break_even_buffer: float = Field(0.01, description="Buffer above break-even for profitability")
 
     # =============================================================================
@@ -154,6 +204,11 @@ class Settings(BaseSettings):
     champions_league_tournament_id: Optional[str] = Field(None, description="ProphetX Champions League tournament ID")
     europa_league_tournament_id: Optional[str] = Field(None, description="ProphetX Europa League tournament ID")
     laliga_tournament_id: Optional[str] = Field(None, description="ProphetX LaLiga tournament ID")
+    premier_league_tournament_id: Optional[str] = Field(None, description="ProphetX Premier League tournament ID")
+    bundesliga_tournament_id: Optional[str] = Field(None, description="ProphetX Bundesliga tournament ID")
+    serie_a_tournament_id: Optional[str] = Field(None, description="ProphetX Serie A tournament ID")
+    ligue_1_tournament_id: Optional[str] = Field(None, description="ProphetX Ligue 1 tournament ID")
+    cfl_tournament_id: Optional[str] = Field(None, description="ProphetX CFL tournament ID")
     mls_tournament_id: Optional[str] = Field(None, description="ProphetX MLS tournament ID")
 
     # =============================================================================
@@ -219,6 +274,16 @@ class Settings(BaseSettings):
             mapping['europa_league'] = self.europa_league_tournament_id
         if 'laliga' in self.target_sports_list and self.laliga_tournament_id:
             mapping['laliga'] = self.laliga_tournament_id
+        if 'premier_league' in self.target_sports_list and self.premier_league_tournament_id:
+            mapping['premier_league'] = self.premier_league_tournament_id
+        if 'bundesliga' in self.target_sports_list and self.bundesliga_tournament_id:
+            mapping['bundesliga'] = self.bundesliga_tournament_id
+        if 'serie_a' in self.target_sports_list and self.serie_a_tournament_id:
+            mapping['serie_a'] = self.serie_a_tournament_id
+        if 'ligue_1' in self.target_sports_list and self.ligue_1_tournament_id:
+            mapping['ligue_1'] = self.ligue_1_tournament_id
+        if 'cfl' in self.target_sports_list and self.cfl_tournament_id:
+            mapping['cfl'] = self.cfl_tournament_id
         if 'mls' in self.target_sports_list and self.mls_tournament_id:
             mapping['mls'] = self.mls_tournament_id
         return mapping
@@ -235,6 +300,11 @@ class Settings(BaseSettings):
             'champions_league': 'Champions League',
             'europa_league': 'Europa League',
             'laliga': 'LaLiga',
+            'premier_league': 'Premier League',
+            'bundesliga': 'Bundesliga',
+            'serie_a': 'Serie A',
+            'ligue_1': 'Ligue 1',
+            'cfl': 'CFL',
             'mls': 'MLS'
         }
         return sport_names.get(sport.lower(), sport.upper())

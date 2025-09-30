@@ -209,7 +209,7 @@ async def test_commission_scenarios():
             "success": True,
             "message": "Commission scenario testing complete with FIXES", 
             "data": {
-                "commission_rate": "3%",
+                "commission_rate": "1%",
                 "test_results": results,
                 "arbitrage_rules": {
                     "both_positive": "Always arbitrage",
@@ -275,7 +275,7 @@ async def test_bet_sizing_logic():
             "data": {
                 "strategy": {
                     "commission_adjusted_plus_odds": "Bet $100",
-                    "commission_adjusted_minus_odds": "Bet to win $100 after 3% commission",
+                    "commission_adjusted_minus_odds": "Bet to win $100 after 1% commission",
                     "key_improvement": "Strategy now determined by commission-adjusted odds, not original odds"
                 },
                 "test_results": results,
