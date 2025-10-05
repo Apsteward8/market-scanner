@@ -43,6 +43,12 @@ class Settings(BaseSettings):
 
     ncaaf_min_stake_threshold: Optional[float] = Field(None, description="NCAAF default minimum combined")
     ncaaf_min_individual_threshold: Optional[float] = Field(None, description="NCAAF default minimum individual")
+
+    nhl_min_stake_threshold: Optional[float] = Field(None, description="NHL default minimum combined")
+    nhl_min_individual_threshold: Optional[float] = Field(None, description="NHL default minimum individual")
+
+    nba_min_stake_threshold: Optional[float] = Field(None, description="NBA default minimum combined")
+    nba_min_individual_threshold: Optional[float] = Field(None, description="NBA default minimum individual")
     
     champions_league_min_stake_threshold: Optional[float] = Field(None, description="Champions League default minimum combined")
     champions_league_min_individual_threshold: Optional[float] = Field(None, description="Champions League default minimum individual")
@@ -70,6 +76,9 @@ class Settings(BaseSettings):
 
     cfl_min_stake_threshold: Optional[float] = Field(None, description="CFL default minimum combined")
     cfl_min_individual_threshold: Optional[float] = Field(None, description="CFL default minimum individual")
+
+    ufc_min_stake_threshold: Optional[float] = Field(None, description="UFC default minimum combined")
+    ufc_min_individual_threshold: Optional[float] = Field(None, description="UFC default minimum individual")
 
     # Market-specific thresholds (new)
     nfl_spread_min_stake_threshold: Optional[float] = Field(None)
@@ -99,6 +108,20 @@ class Settings(BaseSettings):
     mlb_total_min_individual_threshold: Optional[float] = Field(None)
     mlb_moneyline_min_stake_threshold: Optional[float] = Field(None)
     mlb_moneyline_min_individual_threshold: Optional[float] = Field(None)
+    
+    nba_spread_min_stake_threshold: Optional[float] = Field(None)
+    nba_spread_min_individual_threshold: Optional[float] = Field(None)
+    nba_total_min_stake_threshold: Optional[float] = Field(None)
+    nba_total_min_individual_threshold: Optional[float] = Field(None)
+    nba_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    nba_moneyline_min_individual_threshold: Optional[float] = Field(None)
+    
+    nhl_spread_min_stake_threshold: Optional[float] = Field(None)
+    nhl_spread_min_individual_threshold: Optional[float] = Field(None)
+    nhl_total_min_stake_threshold: Optional[float] = Field(None)
+    nhl_total_min_individual_threshold: Optional[float] = Field(None)
+    nhl_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    nhl_moneyline_min_individual_threshold: Optional[float] = Field(None)
     
     champions_league_spread_min_stake_threshold: Optional[float] = Field(None)
     champions_league_spread_min_individual_threshold: Optional[float] = Field(None)
@@ -155,7 +178,14 @@ class Settings(BaseSettings):
     cfl_total_min_individual_threshold: Optional[float] = Field(None)
     cfl_moneyline_min_stake_threshold: Optional[float] = Field(None)
     cfl_moneyline_min_individual_threshold: Optional[float] = Field(None)
-    
+
+    ufc_spread_min_stake_threshold: Optional[float] = Field(None)
+    ufc_spread_min_individual_threshold: Optional[float] = Field(None)
+    ufc_total_min_stake_threshold: Optional[float] = Field(None)
+    ufc_total_min_individual_threshold: Optional[float] = Field(None)
+    ufc_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    ufc_moneyline_min_individual_threshold: Optional[float] = Field(None)
+
     mls_spread_min_stake_threshold: Optional[float] = Field(None)
     mls_spread_min_individual_threshold: Optional[float] = Field(None)
     mls_total_min_stake_threshold: Optional[float] = Field(None)
@@ -209,6 +239,7 @@ class Settings(BaseSettings):
     serie_a_tournament_id: Optional[str] = Field(None, description="ProphetX Serie A tournament ID")
     ligue_1_tournament_id: Optional[str] = Field(None, description="ProphetX Ligue 1 tournament ID")
     cfl_tournament_id: Optional[str] = Field(None, description="ProphetX CFL tournament ID")
+    ufc_tournament_id: Optional[str] = Field(None, description="ProphetX UFC tournament ID")
     mls_tournament_id: Optional[str] = Field(None, description="ProphetX MLS tournament ID")
 
     # =============================================================================
@@ -284,6 +315,8 @@ class Settings(BaseSettings):
             mapping['ligue_1'] = self.ligue_1_tournament_id
         if 'cfl' in self.target_sports_list and self.cfl_tournament_id:
             mapping['cfl'] = self.cfl_tournament_id
+        if 'ufc' in self.target_sports_list and self.ufc_tournament_id:
+            mapping['ufc'] = self.ufc_tournament_id
         if 'mls' in self.target_sports_list and self.mls_tournament_id:
             mapping['mls'] = self.mls_tournament_id
         return mapping
@@ -305,6 +338,7 @@ class Settings(BaseSettings):
             'serie_a': 'Serie A',
             'ligue_1': 'Ligue 1',
             'cfl': 'CFL',
+            'ufc': 'UFC',
             'mls': 'MLS'
         }
         return sport_names.get(sport.lower(), sport.upper())
