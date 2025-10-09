@@ -389,7 +389,7 @@ class HighWagerMonitoringService:
                     max_additional_allowed=line_exposure.max_additional_stake
                 )
             
-            elif line_exposure.max_additional_stake > 5.0:  # Can place partial amount
+            elif line_exposure.max_additional_stake > 0.0:  # Can place partial amount
                 adjusted_stake = line_exposure.max_additional_stake
                 exposure_results[line_id] = ExposureCheckResult(
                     can_place=True,
@@ -530,7 +530,7 @@ class HighWagerMonitoringService:
                 max_additional_allowed=line_exposure.max_additional_stake
             )
         
-        elif line_exposure.max_additional_stake > 5.0:  # Can place partial amount
+        elif line_exposure.max_additional_stake > 0.0:  # Can place partial amount
             adjusted_stake = line_exposure.max_additional_stake
             return ExposureCheckResult(
                 can_place=True,
@@ -846,14 +846,14 @@ class HighWagerMonitoringService:
             # If the effective target is very close to current unmatched, don't consolidate
             improvement = effective_target - total_current_unmatched
             
-            if improvement < 5.0:  # Less than $5 improvement
-                logger.info(f"🚫 SKIPPING CONSOLIDATION: {line_id[:8]}...")
-                logger.info(f"   Current unmatched: ${total_current_unmatched:.0f}")
-                logger.info(f"   Strategy target: ${current_strategy_amount:.0f}")
-                logger.info(f"   Effective target (exposure-limited): ${effective_target:.0f}")
-                logger.info(f"   Improvement: ${improvement:.0f} (< $5 threshold)")
-                logger.info(f"   ✅ Current position is acceptable within exposure limits")
-                return None  # Don't create consolidation action
+            # if improvement < 5.0:  # Less than $5 improvement
+            #     logger.info(f"🚫 SKIPPING CONSOLIDATION: {line_id[:8]}...")
+            #     logger.info(f"   Current unmatched: ${total_current_unmatched:.0f}")
+            #     logger.info(f"   Strategy target: ${current_strategy_amount:.0f}")
+            #     logger.info(f"   Effective target (exposure-limited): ${effective_target:.0f}")
+            #     logger.info(f"   Improvement: ${improvement:.0f} (< $5 threshold)")
+            #     logger.info(f"   ✅ Current position is acceptable within exposure limits")
+            #     return None  # Don't create consolidation action
             
             logger.info(f"✅ SMART CONSOLIDATION: {line_id[:8]}...")
             logger.info(f"   Current unmatched: ${total_current_unmatched:.0f}")
@@ -935,13 +935,13 @@ class HighWagerMonitoringService:
         
         # Get current line exposure to make smart decisions
         current_exposure = self.line_exposures.get(line_id)
-        
-        if stake_difference > 5.0:  # Strategy calls for more stake
+
+        if stake_difference > 0.0:  # Strategy calls for more stake
             # CRITICAL: Check if we can actually add more stake within exposure limits
             if current_exposure:
                 max_additional_allowed = current_exposure.max_additional_stake
                 
-                if max_additional_allowed < 5.0:
+                if max_additional_allowed < 0.0:
                     # Can't add meaningful stake due to exposure limits - DON'T consolidate
                     logger.info(f"💰 EXPOSURE-AWARE: Skipping consolidation for {line_id[:8]}...")
                     logger.info(f"   Current unmatched: ${total_current_unmatched:.2f}")
@@ -952,8 +952,8 @@ class HighWagerMonitoringService:
                 
                 # We can add some stake, but maybe not the full amount
                 effective_target = min(recommended_stake, total_current_unmatched + max_additional_allowed)
-                
-                if abs(effective_target - total_current_unmatched) > 5.0:
+
+                if abs(effective_target - total_current_unmatched) > 0.0:
                     logger.info(f"💰 SMART REFILL NEEDED: {wager.side}")
                     logger.info(f"   Current unmatched: ${total_current_unmatched:.2f}")
                     logger.info(f"   Strategy target: ${recommended_stake:.2f}")
@@ -1120,7 +1120,7 @@ class HighWagerMonitoringService:
         # Check stake differences based on current strategy with exposure limits
         stake_difference = recommended_stake - total_current_unmatched
         
-        if stake_difference > 5.0 and exposure_check.can_place:  # Need to add more stake and can do so
+        if stake_difference > 0.0 and exposure_check.can_place:  # Need to add more stake and can do so
             target_stake = exposure_check.adjusted_stake
             exposure_adjusted = exposure_check.adjusted_stake != exposure_check.original_stake
             
@@ -1151,7 +1151,7 @@ class HighWagerMonitoringService:
                 all_wager_prophetx_ids=[wager.wager_id]
             )
         
-        elif stake_difference > 5.0 and not exposure_check.can_place:
+        elif stake_difference > 0.0 and not exposure_check.can_place:
             # Would need to add stake but can't due to exposure limits
             logger.info(f"💰 EXPOSURE LIMIT: Cannot refill {line_id[:8]}... - {exposure_check.reason}")
             
@@ -1527,7 +1527,7 @@ class HighWagerMonitoringService:
                 max_additional = max(0, (current_strategy_amount * self.max_exposure_multiplier) - updated_exposure.total_stake)
                 target_stake = min(current_strategy_amount, max_additional)
                 
-                if target_stake < 5.0:
+                if target_stake < 0.0:
                     logger.error(f"🚫 SMART CONSOLIDATION BLOCKED: Can only place ${target_stake:.0f} (< $5 minimum)")
                     return ActionResult(
                         success=False,
@@ -1858,7 +1858,7 @@ class HighWagerMonitoringService:
                         logger.info(f"   ✅ SAFE TO PLACE: ${total_after_placing:.0f} <= ${existing_exposure.max_allowed_exposure:.0f}")
                         exposure_adjusted_decisions.append(decision)
                         
-                    elif existing_exposure.max_additional_stake > 5.0:
+                    elif existing_exposure.max_additional_stake > 0.0:
                         # Can place partial amount
                         adjusted_stake = existing_exposure.max_additional_stake
                         exposure_adjustments += 1

@@ -80,7 +80,10 @@ class ProphetXService:
         self.sport_events_cache: Dict[str, CachedData] = {}
         
         # HTTP client with timeout
-        self.client = httpx.AsyncClient(timeout=30.0)
+        # self.client = httpx.AsyncClient(timeout=30.0)
+        self.client = httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0, connect=10.0)  # 30s total, 10s connect
+        )
 
     async def initialize(self) -> Dict[str, Any]:
         """Initialize the service by authenticating both environments"""
