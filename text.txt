@@ -1,0 +1,90 @@
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO - Event Southern Miss Golden Eagles at Georgia Southern Eagles: Found 26 total markets, 3 Game Lines markets
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO - 🔍 Searching for line_id for target: 'Southern Miss Golden Eagles'
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    Available selections in market:
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [0][0] 'Georgia Southern Eagles +148' -> line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [0][1] 'Georgia Southern Eagles +142' -> line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [0][2] 'Georgia Southern Eagles +140' -> line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [0][3] 'Georgia Southern Eagles +138' -> line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [0][4] 'Georgia Southern Eagles +136' -> line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [0][5] 'Georgia Southern Eagles +134' -> line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [0][6] 'Georgia Southern Eagles +132' -> line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [0][7] 'Georgia Southern Eagles +110' -> line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [1][0] 'Southern Miss Golden Eagles -150' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [1][1] 'Southern Miss Golden Eagles -152' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [1][2] 'Southern Miss Golden Eagles -154' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [1][3] 'Southern Miss Golden Eagles -156' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [1][4] 'Southern Miss Golden Eagles -158' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [1][5] 'Southern Miss Golden Eagles -160' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [1][6] 'Southern Miss Golden Eagles -164' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [1][7] 'Southern Miss Golden Eagles -168' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [1][8] 'Southern Miss Golden Eagles -172' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [1][9] 'Southern Miss Golden Eagles -174' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO - ✅ MATCH FOUND: 'Southern Miss Golden Eagles' -> line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    Selection: 'Georgia Southern Eagles +148' from line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO - 🔍 Searching for line_id for target: 'Georgia Southern Eagles'
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    Available selections in market:
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [0][0] 'Georgia Southern Eagles +148' -> line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [0][1] 'Georgia Southern Eagles +142' -> line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [0][2] 'Georgia Southern Eagles +140' -> line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [0][3] 'Georgia Southern Eagles +138' -> line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [0][4] 'Georgia Southern Eagles +136' -> line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [0][5] 'Georgia Southern Eagles +134' -> line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [0][6] 'Georgia Southern Eagles +132' -> line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [0][7] 'Georgia Southern Eagles +110' -> line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [1][0] 'Southern Miss Golden Eagles -150' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [1][1] 'Southern Miss Golden Eagles -152' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [1][2] 'Southern Miss Golden Eagles -154' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.468] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [1][3] 'Southern Miss Golden Eagles -156' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,468 - app.services.market_scanning_service - INFO -    [1][4] 'Southern Miss Golden Eagles -158' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [1][5] 'Southern Miss Golden Eagles -160' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [1][6] 'Southern Miss Golden Eagles -164' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [1][7] 'Southern Miss Golden Eagles -168' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [1][8] 'Southern Miss Golden Eagles -172' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [1][9] 'Southern Miss Golden Eagles -174' -> line_id: 7d8ea365953ed590b04920c3bc48f85f
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO - ✅ MATCH FOUND: 'Georgia Southern Eagles' -> line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    Selection: 'Georgia Southern Eagles +148' from line_id: a57dbe492926941be2b288043ffa4043
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO - 🔍 Searching for line_id for target: 'Southern Miss Golden Eagles -3.5'
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    Available selections in market:
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [0][0] 'Georgia Southern Eagles +3.5' -> line_id: 807543ac857f859230b1d0730007235f
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [0][1] 'Georgia Southern Eagles +3.5' -> line_id: 807543ac857f859230b1d0730007235f
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [0][2] 'Georgia Southern Eagles +3.5' -> line_id: 807543ac857f859230b1d0730007235f
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [0][3] 'Georgia Southern Eagles +3.5' -> line_id: 807543ac857f859230b1d0730007235f
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [0][4] 'Georgia Southern Eagles +3.5' -> line_id: 807543ac857f859230b1d0730007235f
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [1][0] 'Southern Miss Golden Eagles -3.5' -> line_id: 9121e5438c667bc08da3c2d107601e73
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [1][1] 'Southern Miss Golden Eagles -3.5' -> line_id: 9121e5438c667bc08da3c2d107601e73
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [1][2] 'Southern Miss Golden Eagles -3.5' -> line_id: 9121e5438c667bc08da3c2d107601e73
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [1][3] 'Southern Miss Golden Eagles -3.5' -> line_id: 9121e5438c667bc08da3c2d107601e73
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [1][4] 'Southern Miss Golden Eagles -3.5' -> line_id: 9121e5438c667bc08da3c2d107601e73
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [1][5] 'Southern Miss Golden Eagles -3.5' -> line_id: 9121e5438c667bc08da3c2d107601e73
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO - ✅ MATCH FOUND: 'Southern Miss Golden Eagles -3.5' -> line_id: 9121e5438c667bc08da3c2d107601e73
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    Selection: 'Southern Miss Golden Eagles -3.5' from line_id: 9121e5438c667bc08da3c2d107601e73
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO - 🔍 Searching for line_id for target: 'Georgia Southern Eagles +3.5'
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    Available selections in market:
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [0][0] 'Georgia Southern Eagles +3.5' -> line_id: 807543ac857f859230b1d0730007235f
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [0][1] 'Georgia Southern Eagles +3.5' -> line_id: 807543ac857f859230b1d0730007235f
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [0][2] 'Georgia Southern Eagles +3.5' -> line_id: 807543ac857f859230b1d0730007235f
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [0][3] 'Georgia Southern Eagles +3.5' -> line_id: 807543ac857f859230b1d0730007235f
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [0][4] 'Georgia Southern Eagles +3.5' -> line_id: 807543ac857f859230b1d0730007235f
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [1][0] 'Southern Miss Golden Eagles -3.5' -> line_id: 9121e5438c667bc08da3c2d107601e73
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [1][1] 'Southern Miss Golden Eagles -3.5' -> line_id: 9121e5438c667bc08da3c2d107601e73
+[2025-10-09 09:16:13.469] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [1][2] 'Southern Miss Golden Eagles -3.5' -> line_id: 9121e5438c667bc08da3c2d107601e73
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,469 - app.services.market_scanning_service - INFO -    [1][3] 'Southern Miss Golden Eagles -3.5' -> line_id: 9121e5438c667bc08da3c2d107601e73
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO -    [1][4] 'Southern Miss Golden Eagles -3.5' -> line_id: 9121e5438c667bc08da3c2d107601e73
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO -    [1][5] 'Southern Miss Golden Eagles -3.5' -> line_id: 9121e5438c667bc08da3c2d107601e73
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO - ✅ MATCH FOUND: 'Georgia Southern Eagles +3.5' -> line_id: 807543ac857f859230b1d0730007235f
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO -    Selection: 'Georgia Southern Eagles +3.5' from line_id: 807543ac857f859230b1d0730007235f
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO - 🔍 Searching for line_id for target: 'Under 60'
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO -    Available selections in market:
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO -    [0][0] 'under 60' -> line_id: 1f2004abd64b713e2addc5d61d7a9061
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO -    [0][1] 'under 60' -> line_id: 1f2004abd64b713e2addc5d61d7a9061
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO -    [0][2] 'under 60' -> line_id: 1f2004abd64b713e2addc5d61d7a9061
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO -    [0][3] 'under 60' -> line_id: 1f2004abd64b713e2addc5d61d7a9061
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO -    [0][4] 'under 60' -> line_id: 1f2004abd64b713e2addc5d61d7a9061
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO -    [1][0] 'over 60' -> line_id: 43bf4b5e9ff910bee58007d6f5715e91
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO -    [1][1] 'over 60' -> line_id: 43bf4b5e9ff910bee58007d6f5715e91
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO -    [1][2] 'over 60' -> line_id: 43bf4b5e9ff910bee58007d6f5715e91
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO -    [1][3] 'over 60' -> line_id: 43bf4b5e9ff910bee58007d6f5715e91
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO -    [1][4] 'over 60' -> line_id: 43bf4b5e9ff910bee58007d6f5715e91
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO - ✅ MATCH FOUND: 'Under 60' -> line_id: 1f2004abd64b713e2addc5d61d7a9061
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO -    Selection: 'under 60' from line_id: 1f2004abd64b713e2addc5d61d7a9061
+[2025-10-09 09:16:13.470] 2025-10-09 09:16:13,470 - app.services.market_scanning_service - INFO - 🎯 Event Southern Miss Golden Eagles at Georgia Southern Eagles: Found 5 opportunities

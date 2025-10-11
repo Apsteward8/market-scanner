@@ -1234,11 +1234,11 @@ class HighWagerMonitoringService:
                 if diff.action_needed == "cancel_wager":
                     result = await self._execute_cancel_wager(diff)
                 elif diff.action_needed == "place_new_wager":
-                    result = await self._execute_place_new_wager_with_exposure(diff)
+                    result = await self._execute_place_new_wager_optimized(diff)
                 elif diff.action_needed == "update_wager":
-                    result = await self._execute_update_wager_with_exposure(diff)
+                    result = await self._execute_update_wager_optimized(diff)
                 elif diff.action_needed == "consolidate_position":
-                    result = await self._execute_consolidate_position_with_exposure(diff)
+                    result = await self._execute_consolidate_position_optimized(diff)
                 else:
                     logger.warning(f"Unknown action: {diff.action_needed}")
                     continue
@@ -1518,6 +1518,9 @@ class HighWagerMonitoringService:
             # Get updated exposure after cancellations
             updated_exposure = current_line_exposures.get(diff.line_id)
             
+            # Track whether we adjusted the stake
+            was_exposure_adjusted = False
+            
             if updated_exposure:
                 logger.info(f"   📊 Post-cancellation exposure: ${updated_exposure.total_stake:.0f}")
                 logger.info(f"   🎯 Intended stake: ${current_strategy_amount:.0f}")
@@ -1526,6 +1529,9 @@ class HighWagerMonitoringService:
                 # Calculate what we can actually place
                 max_additional = max(0, (current_strategy_amount * self.max_exposure_multiplier) - updated_exposure.total_stake)
                 target_stake = min(current_strategy_amount, max_additional)
+                
+                # Track if we had to adjust
+                was_exposure_adjusted = (target_stake != current_strategy_amount)
                 
                 if target_stake < 0.0:
                     logger.error(f"🚫 SMART CONSOLIDATION BLOCKED: Can only place ${target_stake:.0f} (< $5 minimum)")
@@ -1544,7 +1550,7 @@ class HighWagerMonitoringService:
                     )
                 
                 logger.info(f"   ✅ Smart target: ${target_stake:.0f}")
-                if target_stake != current_strategy_amount:
+                if was_exposure_adjusted:
                     logger.info(f"   🔄 Exposure-adjusted from ${current_strategy_amount:.0f}")
                 
             else:
@@ -1560,7 +1566,7 @@ class HighWagerMonitoringService:
             logger.info(f"   📍 Placing OPTIMIZED consolidated wager:")
             logger.info(f"      💰 Amount: ${target_stake:.0f}")
             logger.info(f"      🎯 Odds: {diff.recommended_odds:+d}")
-            if exposure_check and exposure_check.adjusted_stake != exposure_check.original_stake:
+            if was_exposure_adjusted:
                 logger.info(f"      ⚠️ Exposure-adjusted from ${current_strategy_amount:.0f}")
             
             place_result = await self.prophetx_service.place_bet(
@@ -1595,7 +1601,7 @@ class HighWagerMonitoringService:
                         "new_stake": target_stake,
                         "current_strategy_amount": current_strategy_amount,
                         "new_odds": diff.recommended_odds,
-                        "exposure_adjusted": exposure_check and exposure_check.adjusted_stake != exposure_check.original_stake,
+                        "exposure_adjusted": was_exposure_adjusted,  # FIXED: Use boolean instead of exposure_check
                         "place_result": place_result
                     }
                 )

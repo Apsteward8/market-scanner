@@ -827,7 +827,6 @@ class MarketScanningService:
             # If we can't extract numbers properly, fall back to exact match
             return selection_clean == target_clean
         
-        # FIXED: Much more precise team name matching for moneylines and spreads
         # Extract the core team names from both strings, removing odds and extra formatting
         import re
         
@@ -840,6 +839,13 @@ class MarketScanningService:
         # For exact team name matches after removing odds
         if selection_team == target_team:
             return True
+        
+        # CRITICAL FIX: For moneylines, ONLY use exact matching
+        # The fuzzy matching below was causing "Southern Miss Golden Eagles" to match 
+        # "Georgia Southern Eagles" because they share "Southern" and "Eagles"
+        if market_type_lower == 'moneyline':
+            # Already tried exact match above, so return False
+            return False
         
         # For spread markets, ensure the spread values match if both have spreads
         if market_type_lower == 'spread':
@@ -862,27 +868,7 @@ class MarketScanningService:
                 else:
                     return False
         
-        # FIXED: For team name matching, require much stricter criteria
-        # Split team names into words and check for substantial overlap
-        target_words = set([word for word in target_team.split() if len(word) > 2])
-        selection_words = set([word for word in selection_team.split() if len(word) > 2])
-        
-        # Require substantial word overlap for team matching
-        if target_words and selection_words:
-            common_words = target_words.intersection(selection_words)
-            
-            # Require at least 70% of the shorter name's words to overlap
-            min_words = min(len(target_words), len(selection_words))
-            required_overlap = max(1, int(min_words * 0.7))
-            
-            # Also check that we have meaningful words, not just single characters
-            meaningful_overlap = len([word for word in common_words if len(word) > 2])
-            
-            return meaningful_overlap >= required_overlap
-        
-        # REMOVED: The overly broad substring matching that was causing the bug
-        # OLD BUGGY CODE: if target_clean in selection_clean or selection_clean in target_clean:
-        
+        # If we get here, it's not a match
         return False
         
     def _calculate_undercut_odds(self, original_odds: int) -> int:
