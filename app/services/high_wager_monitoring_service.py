@@ -581,7 +581,15 @@ class HighWagerMonitoringService:
                 if fills_detected:
                     logger.info(f"🎯 FILL DETECTION: {len(fills_detected)} fills detected this cycle")
                     for fill in fills_detected:
-                        logger.info(f"   💰 Fill: {fill['line_id'][:8]}... filled ${fill['amount_filled']:.2f}")
+                        # Record the fill time to start the 5-minute wait period
+                        self.line_fill_times[fill['line_id']] = fill['fill_time']
+                        
+                        # Log the fill with indication if it was instant
+                        fill_type = "INSTANT FILL" if fill.get('instant_fill') else "FILL"
+                        logger.info(
+                            f"   💰 {fill_type}: {fill['line_id'][:8]}... "
+                            f"filled ${fill['fill_amount']:.2f}"
+                        )
                 
                 # Step 4: Update previous states for next cycle
                 self._update_wager_state_tracking()
@@ -1993,7 +2001,7 @@ class HighWagerMonitoringService:
         for wager in self.current_wagers:
             if not wager.is_system_bet or not wager.external_id:
                 continue
-                
+            
             # Check if we have previous state for this wager
             if wager.external_id in self.previous_wager_states:
                 prev_state = self.previous_wager_states[wager.external_id]
@@ -2018,7 +2026,30 @@ class HighWagerMonitoringService:
                         "amount_filled": amount_filled,
                         "current_matched": wager.matched_stake,
                         "current_unmatched": wager.unmatched_stake,
-                        "fill_time": now
+                        "fill_time": now,
+                        "instant_fill": False
+                    })
+            
+            else:
+                # NEW: No previous state - this is first time seeing this wager
+                # Check if it was born already matched (instant fill)
+                if wager.matched_stake > 0:
+                    logger.info(f"🎯 INSTANT FILL DETECTED: {wager.external_id[:12]}...")
+                    logger.info(f"   Line: {wager.line_id[:8]}...")
+                    logger.info(f"   Born with matched: ${wager.matched_stake:.2f}")
+                    logger.info(f"   Remaining unmatched: ${wager.unmatched_stake:.2f}")
+                    
+                    # Record the fill time for this line (start wait period)
+                    self.line_fill_times[wager.line_id] = now
+                    
+                    fills_detected.append({
+                        "external_id": wager.external_id,
+                        "line_id": wager.line_id,
+                        "amount_filled": wager.matched_stake,
+                        "current_matched": wager.matched_stake,
+                        "current_unmatched": wager.unmatched_stake,
+                        "fill_time": now,
+                        "instant_fill": True
                     })
         
         return fills_detected
