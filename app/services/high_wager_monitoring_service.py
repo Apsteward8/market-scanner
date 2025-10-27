@@ -588,7 +588,7 @@ class HighWagerMonitoringService:
                         fill_type = "INSTANT FILL" if fill.get('instant_fill') else "FILL"
                         logger.info(
                             f"   💰 {fill_type}: {fill['line_id'][:8]}... "
-                            f"filled ${fill['fill_amount']:.2f}"
+                            f"filled ${fill['amount_filled']:.2f}"  # Changed to amount_filled
                         )
                 
                 # Step 4: Update previous states for next cycle

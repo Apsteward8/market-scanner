@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     mls_min_stake_threshold: Optional[float] = Field(None, description="MLS default minimum combined")
     mls_min_individual_threshold: Optional[float] = Field(None, description="MLS default minimum individual")
 
+    english_championship_min_stake_threshold: Optional[float] = Field(None, description="English Championship default minimum combined")
+    english_championship_min_individual_threshold: Optional[float] = Field(None, description="English Championship default minimum individual")
+
     cfl_min_stake_threshold: Optional[float] = Field(None, description="CFL default minimum combined")
     cfl_min_individual_threshold: Optional[float] = Field(None, description="CFL default minimum individual")
 
@@ -192,6 +195,13 @@ class Settings(BaseSettings):
     mls_total_min_individual_threshold: Optional[float] = Field(None)
     mls_moneyline_min_stake_threshold: Optional[float] = Field(None)
     mls_moneyline_min_individual_threshold: Optional[float] = Field(None)
+
+    english_championship_spread_min_stake_threshold: Optional[float] = Field(None)
+    english_championship_spread_min_individual_threshold: Optional[float] = Field(None)
+    english_championship_total_min_stake_threshold: Optional[float] = Field(None)
+    english_championship_total_min_individual_threshold: Optional[float] = Field(None)
+    english_championship_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    english_championship_moneyline_min_individual_threshold: Optional[float] = Field(None)
     
     # =============================================================================
     # Risk Management Settings
@@ -241,6 +251,7 @@ class Settings(BaseSettings):
     cfl_tournament_id: Optional[str] = Field(None, description="ProphetX CFL tournament ID")
     ufc_tournament_id: Optional[str] = Field(None, description="ProphetX UFC tournament ID")
     mls_tournament_id: Optional[str] = Field(None, description="ProphetX MLS tournament ID")
+    english_championship_tournament_id: Optional[str] = Field(None, description="ProphetX English Championship tournament ID")
 
     # =============================================================================
     # Computed Properties
@@ -319,6 +330,8 @@ class Settings(BaseSettings):
             mapping['ufc'] = self.ufc_tournament_id
         if 'mls' in self.target_sports_list and self.mls_tournament_id:
             mapping['mls'] = self.mls_tournament_id
+        if 'english_championship' in self.target_sports_list and self.english_championship_tournament_id:
+            mapping['english_championship'] = self.english_championship_tournament_id
         return mapping
     
     def get_sport_display_name(self, sport: str) -> str:
@@ -339,7 +352,8 @@ class Settings(BaseSettings):
             'ligue_1': 'Ligue 1',
             'cfl': 'CFL',
             'ufc': 'UFC',
-            'mls': 'MLS'
+            'mls': 'MLS',
+            'english_championship': 'English Championship'
         }
         return sport_names.get(sport.lower(), sport.upper())
     
