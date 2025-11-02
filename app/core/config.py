@@ -202,6 +202,16 @@ class Settings(BaseSettings):
     english_championship_total_min_individual_threshold: Optional[float] = Field(None)
     english_championship_moneyline_min_stake_threshold: Optional[float] = Field(None)
     english_championship_moneyline_min_individual_threshold: Optional[float] = Field(None)
+
+    # Favorite Teams Configuration
+    favorite_teams: str = Field(default="", env="FAVORITE_TEAMS")
+    skip_all_favorite_team_games: bool = Field(default=False, env="SKIP_ALL_FAVORITE_TEAM_GAMES")
+
+    def get_favorite_teams_list(self) -> List[str]:
+        """Parse favorite teams from comma-separated string"""
+        if not self.favorite_teams:
+            return []
+        return [team.strip() for team in self.favorite_teams.split(',') if team.strip()]
     
     # =============================================================================
     # Risk Management Settings

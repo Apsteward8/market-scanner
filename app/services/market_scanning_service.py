@@ -462,6 +462,83 @@ class MarketScanningService:
         
         return True
 
+    def _is_betting_against_favorite_team(self, opportunity: HighWagerOpportunity, 
+                                        event: SportEvent) -> bool:
+        """
+        Check if this opportunity would be betting against a favorite team
+        
+        Returns True if:
+        - The bet is against a favorite team (should be skipped)
+        
+        Returns False if:
+        - No favorite teams configured
+        - Bet is in favor of a favorite team (allowed)
+        - Game doesn't involve any favorite teams (allowed)
+        """
+        favorite_teams = self.settings.get_favorite_teams_list()
+        
+        if not favorite_teams:
+            return False  # No favorites configured, allow all bets
+        
+        # Normalize team names for comparison (lowercase, strip whitespace)
+        fav_teams_normalized = [team.lower().strip() for team in favorite_teams]
+        home_normalized = event.home_team.lower().strip()
+        away_normalized = event.away_team.lower().strip()
+        
+        # Check if either team is a favorite
+        home_is_favorite = home_normalized in fav_teams_normalized
+        away_is_favorite = away_normalized in fav_teams_normalized
+        
+        # If no favorite team is playing, allow the bet
+        if not home_is_favorite and not away_is_favorite:
+            return False
+        
+        # If configured to skip ALL games with favorites, do so
+        if self.settings.skip_all_favorite_team_games:
+            logger.info(
+                f"🚫 Skipping opportunity - favorite team game: {event.display_name} "
+                f"(configured to skip all favorite team games)"
+            )
+            return True
+        
+        # Determine which team we're betting on from the large_bet_side
+        betting_side = opportunity.large_bet_side.lower().strip()
+        
+        # For moneyline and spread bets, check if we're betting against a favorite
+        if home_is_favorite:
+            # Check if we're betting on the away team (against home favorite)
+            if away_normalized in betting_side or any(word in betting_side for word in away_normalized.split()):
+                logger.info(
+                    f"🚫 FAVORITE TEAM FILTER: Skipping bet on {opportunity.large_bet_side} "
+                    f"(would bet against favorite {event.home_team})"
+                )
+                return True
+        
+        if away_is_favorite:
+            # Check if we're betting on the home team (against away favorite)
+            if home_normalized in betting_side or any(word in betting_side for word in home_normalized.split()):
+                logger.info(
+                    f"🚫 FAVORITE TEAM FILTER: Skipping bet on {opportunity.large_bet_side} "
+                    f"(would bet against favorite {event.away_team})"
+                )
+                return True
+        
+        # If we get here, we're either betting ON a favorite team or it's a total bet
+        # For totals (Over/Under), allow them since they don't favor either team
+        if opportunity.market_type == 'total':
+            logger.debug(
+                f"✅ Allowing total bet on {event.display_name} "
+                f"(totals don't bet against teams)"
+            )
+            return False
+        
+        # We're betting in favor of a favorite team - allow it
+        logger.info(
+            f"✅ Allowing bet on {opportunity.large_bet_side} "
+            f"(betting in favor of favorite team)"
+        )
+        return False
+
     # async def _get_upcoming_events(self) -> List[SportEvent]:
     #     """Get upcoming NCAAF events in the scan window"""
     #     try:
@@ -760,7 +837,7 @@ class MarketScanningService:
 
             logger.debug(f"Creating opportunity: market_id={market_id_for_arbitrage}, line_id={line_id_for_betting}, betting_on={large_bet_side}")
             
-            return HighWagerOpportunity(
+            opportunity = HighWagerOpportunity(
                 event_id=event.event_id,
                 event_name=event.display_name,
                 scheduled_time=event.scheduled_time,
@@ -780,6 +857,13 @@ class MarketScanningService:
                 available_liquidity_amount=available_liquidity,
                 our_proposed_odds=our_proposed_odds
             )
+            
+            # *** ADD THIS NEW SECTION HERE ***
+            # Check if this opportunity would bet against a favorite team
+            if self._is_betting_against_favorite_team(opportunity, event):
+                return None  # Skip this opportunity
+            
+            return opportunity
             
         except Exception as e:
             logger.error(f"Error creating opportunity: {e}")
