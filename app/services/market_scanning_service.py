@@ -117,6 +117,11 @@ class HighWagerOpportunity:
     
     # Our proposed action
     our_proposed_odds: int  # Better odds we'll offer
+    
+    # NEW: Player prop specific fields
+    player_id: Optional[str] = None
+    player_name: Optional[str] = None
+    is_player_prop: bool = False
 
 class MarketScanningService:
     """Service for scanning ProphetX markets for high wager opportunities"""
@@ -129,17 +134,36 @@ class MarketScanningService:
         self.sport_tournament_mapping = self.settings.sport_tournament_mapping
         
         # Scanning parameters from settings
-        # self.min_stake_threshold = self.settings.min_stake_threshold  # $10000
-        # self.min_individual_threshold = 2500.0  # Both stake and value must be > $2500
-        self.undercut_improvement = self.settings.undercut_improvement  # 1 point
-        self.commission_rate = self.settings.prophetx_commission_rate  # 1%
+        self.undercut_improvement = self.settings.undercut_improvement
+        self.commission_rate = self.settings.prophetx_commission_rate
         
-        # Time window for events (next 24 hours)
+        # Time window for events
         self.scan_window_hours = 12
         
         # Focus on main line markets
         self.main_line_categories = {"Game Lines"}
-        self.main_line_types = {"moneyline", "spread", "total", "totals"}  # Added "totals" as backup
+        self.main_line_types = {"moneyline", "spread", "total", "totals"}
+        
+        # Player props configuration
+        self.enable_player_props = self.settings.enable_player_props
+        
+        # Parse enabled sports for player props
+        self.player_props_sports = set(
+            sport.strip().upper() for sport in self.settings.player_props_sports.split(',') 
+            if sport.strip()
+        ) if self.settings.player_props_sports else set()
+        
+        # NEW: Build a map of sport -> prop types dynamically
+        self.sport_player_prop_types = {}
+        for sport in self.player_props_sports:
+            prop_types = self.settings.get_player_prop_types(sport)
+            self.sport_player_prop_types[sport] = prop_types
+            logger.info(f"   {sport} player props: {len(prop_types)} types configured")
+        
+        logger.info(f"📊 Player props enabled: {self.enable_player_props}")
+        if self.enable_player_props:
+            logger.info(f"   Sports: {self.player_props_sports}")
+            logger.info(f"   Total prop types across all sports: {sum(len(v) for v in self.sport_player_prop_types.values())}")
         
     def _find_next_valid_odds(self, target_odds: int, better_for_bettor: bool = True) -> int:
         """
@@ -433,9 +457,16 @@ class MarketScanningService:
         # Get market type from opportunity
         market_type = getattr(opportunity, 'market_type', 'moneyline')
         
-        # Get thresholds using hierarchical lookup
-        min_stake = self.settings.get_threshold(sport, market_type, 'min_stake_threshold')
-        min_individual = self.settings.get_threshold(sport, market_type, 'min_individual_threshold')
+        # NEW: Use player prop thresholds if applicable
+        if opportunity.is_player_prop:
+            min_stake = self.settings.get_player_prop_threshold(sport, 'min_stake_threshold')
+            min_individual = self.settings.get_player_prop_threshold(sport, 'min_individual_threshold')
+            threshold_label = f"{sport.upper()}:PLAYER_PROP:{market_type.upper()}"
+        else:
+            # Use main market thresholds
+            min_stake = self.settings.get_threshold(sport, market_type, 'min_stake_threshold')
+            min_individual = self.settings.get_threshold(sport, market_type, 'min_individual_threshold')
+            threshold_label = f"{sport.upper()}:{market_type.upper()}"
         
         # Check thresholds
         combined_size = opportunity.large_bet_combined_size
@@ -448,20 +479,53 @@ class MarketScanningService:
         
         if not meets_combined or not meets_individual:
             logger.debug(
-                f"Opportunity below {sport.upper()}:{market_type.upper()} thresholds: "
+                f"Opportunity below {threshold_label} thresholds: "
                 f"Combined ${combined_size:,.0f} vs ${min_stake:,.0f}, "
                 f"Individual ${stake_amount:,.0f}/${liquidity_value:,.0f} vs ${min_individual:,.0f}"
             )
             return False
         
         logger.info(
-            f"✅ Opportunity meets {sport.upper()}:{market_type.upper()} thresholds: "
+            f"✅ Opportunity meets {threshold_label} thresholds: "
             f"Combined ${combined_size:,.0f} >= ${min_stake:,.0f}, "
             f"Individual ${stake_amount:,.0f}/${liquidity_value:,.0f} >= ${min_individual:,.0f}"
         )
         
         return True
-
+    
+    def _should_process_market(self, market: Dict[str, Any], sport: str) -> Tuple[bool, bool]:
+        """
+        Determine if we should process this market
+        
+        Returns:
+            Tuple[bool, bool]: (should_process, is_player_prop)
+        """
+        category_name = market.get('category_name', '')
+        market_type = market.get('type', '').lower()
+        market_sub_type = market.get('sub_type', '')
+        player_id = market.get('player_id')
+        
+        # Check if it's a main line market
+        is_main_line = (category_name in self.main_line_categories and 
+                        market_type in self.main_line_types)
+        
+        # Check if it's a player prop we want to monitor
+        sport_upper = sport.upper()
+        is_player_prop = False
+        
+        if (self.enable_player_props and 
+            sport_upper in self.player_props_sports and
+            player_id is not None and
+            market_type in self.main_line_types):
+            
+            # Check if this specific prop type is enabled for this sport
+            sport_prop_types = self.sport_player_prop_types.get(sport_upper, set())
+            is_player_prop = market_sub_type in sport_prop_types
+        
+        should_process = is_main_line or is_player_prop
+        
+        return should_process, is_player_prop
+    
     def _is_betting_against_favorite_team(self, opportunity: HighWagerOpportunity, 
                                         event: SportEvent) -> bool:
         """
@@ -646,31 +710,48 @@ class MarketScanningService:
         """Scan markets for a single event"""
         opportunities = []
         
+        # Determine sport for this event
+        sport = self._determine_sport_from_event(event)
+        
         # Debug: Log all market types we're seeing
         market_types_found = set()
         game_line_markets = []
+        player_prop_markets = []
         
         for market in markets:
             category_name = market.get('category_name', '')
             market_type = market.get('type', '').lower()
+            market_sub_type = market.get('sub_type', '')
+            player_id = market.get('player_id')
+            
             market_types_found.add(f"{category_name}:{market_type}")
             
-            # Collect all Game Lines markets
-            if category_name == "Game Lines":
-                game_line_markets.append(market)
+            # Check if we should process this market
+            should_process, is_player_prop = self._should_process_market(market, sport)
+            
+            if should_process:
+                if is_player_prop:
+                    player_prop_markets.append(market)
+                else:
+                    game_line_markets.append(market)
         
-        logger.info(f"Event {event.display_name}: Found {len(markets)} total markets, {len(game_line_markets)} Game Lines markets")
+        logger.info(
+            f"Event {event.display_name}: Found {len(markets)} total markets, "
+            f"{len(game_line_markets)} Game Lines markets, "
+            f"{len(player_prop_markets)} Player Prop markets"
+        )
         logger.debug(f"Market types found: {sorted(market_types_found)}")
         
-        # Process all Game Lines markets
+        # Process Game Lines markets (existing logic)
         for market in game_line_markets:
             try:
                 market_type = (market.get('type') or '').lower()
                 if market_type not in self.main_line_types:
                     continue
 
-                async def process_selection_groups(selections: list, market_ctx: dict):
-                    # selections is a list of [side0[], side1[]]
+                async def process_selection_groups(selections: list, market_ctx: dict, is_prop: bool = False):
+                    # ... (keep your existing process_selection_groups code exactly as is)
+                    # Just add the is_prop parameter to pass through
                     for side_group in selections or []:
                         if not side_group:
                             continue
@@ -679,17 +760,17 @@ class MarketScanningService:
                             value = float(selection.get('value', 0) or 0)
                             combined = stake + value
 
-                            # Use both the combined and individual thresholds
-                            # NEW: Get market-specific thresholds dynamically
                             market_type = market_ctx.get('type', 'moneyline')
-
-                            # Determine sport from event (you'll need to pass this)
                             sport = self._determine_sport_from_event(event)
 
-                            min_stake = self.settings.get_threshold(sport, market_type, 'min_stake_threshold')
-                            min_individual = self.settings.get_threshold(sport, market_type, 'min_individual_threshold')
+                            # NEW: Use player prop thresholds if it's a player prop
+                            if is_prop:
+                                min_stake = self.settings.get_player_prop_threshold(sport, 'min_stake_threshold')
+                                min_individual = self.settings.get_player_prop_threshold(sport, 'min_individual_threshold')
+                            else:
+                                min_stake = self.settings.get_threshold(sport, market_type, 'min_stake_threshold')
+                                min_individual = self.settings.get_threshold(sport, market_type, 'min_individual_threshold')
 
-                            # Use the dynamic thresholds instead of hardcoded ones
                             if (
                                 combined >= min_stake
                                 and stake >= min_individual
@@ -697,30 +778,55 @@ class MarketScanningService:
                             ):
                                 opp = await self._create_opportunity(
                                     event=event,
-                                    market=market_ctx,          # important: this may include 'line_value'
-                                    selections=selections,      # pass the current line's selections
-                                    liquidity_selection=selection
+                                    market=market_ctx,
+                                    selections=selections,
+                                    liquidity_selection=selection,
+                                    is_player_prop=is_prop  # NEW: Pass this flag
                                 )
                                 if opp and abs(opp.our_proposed_odds) <= 400:
                                     opportunities.append(opp)
 
                 if market_type == 'moneyline':
-                    # Moneylines: selections live at the market level
                     selection_groups = market.get('selections', [])
-                    await process_selection_groups(selection_groups, market)
+                    await process_selection_groups(selection_groups, market, is_prop=False)
                 else:
-                    # Spreads / Totals: iterate each market line, and use its selections
                     for line in market.get('market_lines', []) or []:
                         line_selections = line.get('selections', [])
                         if not line_selections:
                             continue
-                        # Pass the line value so _extract_line_info can print "Over 47.5" / "+6.5" nicely
                         market_with_line = dict(market)
                         market_with_line['line_value'] = line.get('line', 0)
-                        await process_selection_groups(line_selections, market_with_line)
+                        await process_selection_groups(line_selections, market_with_line, is_prop=False)
             except Exception as e:
                 logger.warning(
                     f"Error scanning market {market.get('category_name', 'Unknown')} - {market.get('type', 'Unknown')}: {e}",
+                    exc_info=True
+                )
+                continue
+        
+        # NEW: Process Player Prop markets (same logic as main lines)
+        for market in player_prop_markets:
+            try:
+                market_type = (market.get('type') or '').lower()
+                if market_type not in self.main_line_types:
+                    continue
+
+                # Use the same process_selection_groups function with is_prop=True
+                if market_type == 'moneyline':
+                    selection_groups = market.get('selections', [])
+                    await process_selection_groups(selection_groups, market, is_prop=True)
+                else:
+                    # Player props typically use market_lines structure like totals
+                    for line in market.get('market_lines', []) or []:
+                        line_selections = line.get('selections', [])
+                        if not line_selections:
+                            continue
+                        market_with_line = dict(market)
+                        market_with_line['line_value'] = line.get('line', 0)
+                        await process_selection_groups(line_selections, market_with_line, is_prop=True)
+            except Exception as e:
+                logger.warning(
+                    f"Error scanning player prop market {market.get('name', 'Unknown')}: {e}",
                     exc_info=True
                 )
                 continue
@@ -741,7 +847,8 @@ class MarketScanningService:
     
     async def _create_opportunity(self, event: SportEvent, market: Dict[str, Any], 
                                 selections: List[List[Dict[str, Any]]], 
-                                liquidity_selection: Dict[str, Any]) -> Optional[HighWagerOpportunity]:
+                                liquidity_selection: Dict[str, Any],
+                                is_player_prop: bool = False) -> Optional[HighWagerOpportunity]:
         """Create an opportunity from identified high stakes"""
         
         try:
@@ -754,6 +861,14 @@ class MarketScanningService:
             large_bet_stake = float(liquidity_selection.get('stake', 0))
             large_bet_value = float(liquidity_selection.get('value', 0))
             combined_size = large_bet_stake + large_bet_value
+
+            # NEW: Extract player prop info if applicable
+            player_id = None
+            player_name = None
+            if is_player_prop:
+                player_id = str(market.get('player_id', ''))
+                player_name = market.get('name', '')  # e.g., "Michael Porter Jr. Total Points"
+                logger.info(f"   🏀 Player Prop: {player_name}")
             
             # CORRECTED LOGIC: The large bettor bet the OPPOSITE side of available liquidity
             large_bet_side = self._get_opposite_side_with_context(
@@ -838,16 +953,16 @@ class MarketScanningService:
             logger.debug(f"Creating opportunity: market_id={market_id_for_arbitrage}, line_id={line_id_for_betting}, betting_on={large_bet_side}")
             
             opportunity = HighWagerOpportunity(
-                event_id=event.event_id,
+                event_id=str(event.event_id),
                 event_name=event.display_name,
                 scheduled_time=event.scheduled_time,
                 tournament_name=event.tournament_name,
-                market_id=market_id_for_arbitrage,     # For arbitrage detection (market ID)
-                line_id=line_id_for_betting,          # For bet placement (correct team's line_id)
-                market_name=market.get('category_name', ''),
-                market_type=market.get('type', ''),
+                market_id=market_id_for_arbitrage,
+                line_id=line_id_for_betting,
+                market_name=market.get('name', 'Unknown Market'),
+                market_type=market.get('type', '').lower(),
                 line_info=line_info,
-                large_bet_side=large_bet_side,        # Who we're betting on
+                large_bet_side=large_bet_side,
                 large_bet_stake_amount=large_bet_stake,
                 large_bet_liquidity_value=large_bet_value,
                 large_bet_combined_size=combined_size,
@@ -855,7 +970,11 @@ class MarketScanningService:
                 available_side=available_side,
                 available_odds=available_odds,
                 available_liquidity_amount=available_liquidity,
-                our_proposed_odds=our_proposed_odds
+                our_proposed_odds=our_proposed_odds,
+                # NEW: Player prop fields
+                player_id=player_id,
+                player_name=player_name,
+                is_player_prop=is_player_prop
             )
             
             # *** ADD THIS NEW SECTION HERE ***

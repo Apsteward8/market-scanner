@@ -49,7 +49,10 @@ class Settings(BaseSettings):
 
     nba_min_stake_threshold: Optional[float] = Field(None, description="NBA default minimum combined")
     nba_min_individual_threshold: Optional[float] = Field(None, description="NBA default minimum individual")
-    
+
+    ncaab_min_stake_threshold: Optional[float] = Field(None, description="NCAAB default minimum combined")
+    ncaab_min_individual_threshold: Optional[float] = Field(None, description="NCAAB default minimum individual")
+
     champions_league_min_stake_threshold: Optional[float] = Field(None, description="Champions League default minimum combined")
     champions_league_min_individual_threshold: Optional[float] = Field(None, description="Champions League default minimum individual")
     
@@ -118,7 +121,14 @@ class Settings(BaseSettings):
     nba_total_min_individual_threshold: Optional[float] = Field(None)
     nba_moneyline_min_stake_threshold: Optional[float] = Field(None)
     nba_moneyline_min_individual_threshold: Optional[float] = Field(None)
-    
+
+    ncaab_spread_min_stake_threshold: Optional[float] = Field(None)
+    ncaab_spread_min_individual_threshold: Optional[float] = Field(None)
+    ncaab_total_min_stake_threshold: Optional[float] = Field(None)
+    ncaab_total_min_individual_threshold: Optional[float] = Field(None)
+    ncaab_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    ncaab_moneyline_min_individual_threshold: Optional[float] = Field(None)
+
     nhl_spread_min_stake_threshold: Optional[float] = Field(None)
     nhl_spread_min_individual_threshold: Optional[float] = Field(None)
     nhl_total_min_stake_threshold: Optional[float] = Field(None)
@@ -203,6 +213,72 @@ class Settings(BaseSettings):
     english_championship_moneyline_min_stake_threshold: Optional[float] = Field(None)
     english_championship_moneyline_min_individual_threshold: Optional[float] = Field(None)
 
+    # Player Props Configuration
+    enable_player_props: bool = Field(False, env="ENABLE_PLAYER_PROPS")
+    player_props_sports: str = Field("", env="PLAYER_PROPS_SPORTS")
+    
+    # NBA Player Props Thresholds
+    nba_player_props_min_stake_threshold: float = Field(6000.0, env="NBA_PLAYER_PROPS_MIN_STAKE_THRESHOLD")
+    nba_player_props_min_individual_threshold: float = Field(2500.0, env="NBA_PLAYER_PROPS_MIN_INDIVIDUAL_THRESHOLD")
+    nba_player_prop_types: str = Field(
+        "player_total_points,player_total_rebounds,player_total_assists",
+        env="NBA_PLAYER_PROP_TYPES"
+    )
+
+    nfl_player_props_min_stake_threshold: float = Field(10000.0, env="NFL_PLAYER_PROPS_MIN_STAKE_THRESHOLD")
+    nfl_player_props_min_individual_threshold: float = Field(4000.0, env="NFL_PLAYER_PROPS_MIN_INDIVIDUAL_THRESHOLD")
+    nfl_player_prop_types: str = Field("player_total_passing_yards", env="NFL_PLAYER_PROP_TYPES")
+
+    nhl_player_props_min_stake_threshold: float = Field(9000.0, env="NHL_PLAYER_PROPS_MIN_STAKE_THRESHOLD")
+    nhl_player_props_min_individual_threshold: float = Field(3000.0, env="NHL_PLAYER_PROPS_MIN_INDIVIDUAL_THRESHOLD")
+    nhl_player_prop_types: str = Field(
+        "player_total_goals,player_total_assists,player_total_points",
+        env="NHL_PLAYER_PROP_TYPES"
+    )
+
+    ncaab_player_props_min_stake_threshold: float = Field(3500.0, env="NCAAB_PLAYER_PROPS_MIN_STAKE_THRESHOLD")
+    ncaab_player_props_min_individual_threshold: float = Field(1500.0, env="NCAAB_PLAYER_PROPS_MIN_INDIVIDUAL_THRESHOLD")
+    ncaab_player_prop_types: str = Field(
+        "player_total_points,player_total_rebounds,player_total_assists,player_total_three_pointers_made,player_total_points_rebounds,player_total_points_assists,player_total_rebounds_assists,player_total_points_rebounds_assists,player_to_record_a_double_double,player_total_blocks,player_total_steals,player_total_steals_blocks,player_total_turnovers,sup_moneyline",
+        env="NCAAB_PLAYER_PROP_TYPES"
+    )
+
+    def get_player_prop_threshold(self, sport: str, threshold_type: str) -> float:
+        """Get player prop threshold for a sport"""
+        sport_key = sport.lower().replace(' ', '_')  # Handle "Premier League" → "premier_league"
+        attr_name = f"{sport_key}_player_props_{threshold_type}"
+        
+        # Try sport-specific player prop threshold
+        value = getattr(self, attr_name, None)
+        if value is not None:
+            return value
+        
+        # Fallback to global defaults (lower than main markets)
+        if threshold_type == 'min_stake_threshold':
+            return 8000.0  # Default player prop combined threshold
+        elif threshold_type == 'min_individual_threshold':
+            return 3000.0  # Default player prop individual threshold
+        
+        return self.min_stake_threshold  # Final fallback
+
+    def get_player_prop_types(self, sport: str) -> set:
+        """Get player prop types for a sport"""
+        sport_key = sport.lower().replace(' ', '_')
+        attr_name = f"{sport_key}_player_prop_types"
+        
+        # Get the comma-separated string
+        prop_types_str = getattr(self, attr_name, "")
+        
+        # Parse into set
+        if prop_types_str:
+            return set(
+                prop_type.strip() 
+                for prop_type in prop_types_str.split(',') 
+                if prop_type.strip()
+            )
+        
+        return set()  # Return empty set if not configured
+
     # Favorite Teams Configuration
     favorite_teams: str = Field(default="", env="FAVORITE_TEAMS")
     skip_all_favorite_team_games: bool = Field(default=False, env="SKIP_ALL_FAVORITE_TEAM_GAMES")
@@ -216,6 +292,13 @@ class Settings(BaseSettings):
     # =============================================================================
     # Risk Management Settings
     # =============================================================================
+    # Bet Sizing Configuration
+    base_bet_amount: float = Field(100.0, env="BASE_BET_AMOUNT")
+    target_win_amount: float = Field(100.0, env="TARGET_WIN_AMOUNT")
+    
+    # Player Props Bet Sizing
+    player_prop_base_bet_amount: float = Field(50.0, env="PLAYER_PROP_BASE_BET_AMOUNT")
+    player_prop_target_win_amount: float = Field(50.0, env="PLAYER_PROP_TARGET_WIN_AMOUNT")
     max_exposure_total: float = Field(10000.0, description="Maximum total portfolio exposure")
     
     # =============================================================================
@@ -249,6 +332,7 @@ class Settings(BaseSettings):
     mlb_tournament_id: Optional[str] = Field(None, description="ProphetX MLB tournament ID")
     nfl_tournament_id: Optional[str] = Field(None, description="ProphetX NFL tournament ID")
     nba_tournament_id: Optional[str] = Field(None, description="ProphetX NBA tournament ID")
+    ncaab_tournament_id: Optional[str] = Field(None, description="ProphetX NCAAB tournament ID")
     nhl_tournament_id: Optional[str] = Field(None, description="ProphetX NHL tournament ID")
     wnba_tournament_id: Optional[str] = Field(None, description="ProphetX WNBA tournament ID")
     champions_league_tournament_id: Optional[str] = Field(None, description="ProphetX Champions League tournament ID")
@@ -316,6 +400,8 @@ class Settings(BaseSettings):
             mapping['nfl'] = self.nfl_tournament_id
         if 'nba' in self.target_sports_list and self.nba_tournament_id:
             mapping['nba'] = self.nba_tournament_id
+        if 'ncaab' in self.target_sports_list and self.ncaab_tournament_id:
+            mapping['ncaab'] = self.ncaab_tournament_id
         if 'nhl' in self.target_sports_list and self.nhl_tournament_id:
             mapping['nhl'] = self.nhl_tournament_id
         if 'wnba' in self.target_sports_list and self.wnba_tournament_id:
@@ -351,6 +437,7 @@ class Settings(BaseSettings):
             'mlb': 'MLB', 
             'nfl': 'NFL',
             'nba': 'NBA',
+            'ncaab': 'NCAAB',
             'nhl': 'NHL',
             'wnba': 'WNBA',
             'champions_league': 'Champions League',

@@ -74,13 +74,26 @@ async def scan_opportunities():
             # Group by event
             if event_id not in events_map:
                 hours_until = (opp.scheduled_time - datetime.now(timezone.utc)).total_seconds() / 3600
+                if opp.is_player_prop:
+                    display_name = f"🏀 {opp.player_name}"
+                    event_display = f"{opp.event_name} - {opp.player_name}"
+                else:
+                    display_name = opp.event_name
+                    event_display = opp.event_name
                 events_map[event_id] = {
                     "event": {
                         "id": opp.event_id,
-                        "name": opp.event_name,
+                        "name": event_display,
                         "scheduled_time": opp.scheduled_time.isoformat(),
                         "hours_until": round(hours_until, 1),
                         "tournament": opp.tournament_name
+                    },
+                    "market": {
+                        "type": opp.market_type,
+                        "name": opp.market_name,
+                        "line_info": opp.line_info,
+                        "is_player_prop": opp.is_player_prop,  # NEW
+                        "player_name": opp.player_name if opp.is_player_prop else None,  # NEW
                     },
                     "opportunities": [],
                     "summary": {
