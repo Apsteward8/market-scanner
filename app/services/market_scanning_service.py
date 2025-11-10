@@ -264,8 +264,8 @@ class MarketScanningService:
         For each unique combination of (event_id, market_type, large_bet_side), keep only
         the opportunity that creates the best liquidity odds for opposing bettors.
         
-        This groups ALL opportunities for the same side (e.g., all "Philadelphia Eagles" moneyline bets)
-        regardless of specific line odds (-330, -340, etc.) and keeps the best one.
+        For player props, also group by player_id to prevent cross-player deduplication.
+        Different players can have the same line (e.g., multiple players with "Over 1.5 threes").
         
         Logic: Higher absolute value of our_proposed_odds creates better odds for the opposing side.
         Example: our_proposed_odds of -375 creates +375 liquidity, which is better than -335 creating +335.
@@ -280,12 +280,18 @@ class MarketScanningService:
         grouped_opportunities = {}
         
         for i, opp in enumerate(opportunities):
-            # Create key based on event, market type, and the side we're betting on
-            # EXCLUDE line_info to group different odds for the same underlying bet
-            key = (opp.event_id, opp.market_type, opp.large_bet_side)
+            # For player props, include player_id to prevent cross-player deduplication
+            # Different players can have the same line (e.g., "Over 1.5 threes")
+            if opp.is_player_prop:
+                key = (opp.event_id, opp.market_type, opp.large_bet_side, opp.player_id)
+            else:
+                key = (opp.event_id, opp.market_type, opp.large_bet_side)
             
             # DEBUG: Log each opportunity being processed
-            logger.info(f"🔍 [{i+1}] Processing: {opp.event_name} | {opp.market_type} | large_bet_side='{opp.large_bet_side}' | our_odds={opp.our_proposed_odds:+d} | line_info='{opp.line_info}'")
+            prop_indicator = "🏀" if opp.is_player_prop else "📊"
+            logger.info(f"🔍 [{i+1}] {prop_indicator} Processing: {opp.event_name} | {opp.market_type} | large_bet_side='{opp.large_bet_side}' | our_odds={opp.our_proposed_odds:+d} | line_info='{opp.line_info}'")
+            if opp.is_player_prop:
+                logger.info(f"    → Player: {opp.player_name} (ID: {opp.player_id})")
             logger.info(f"    → Grouping key: {key}")
             
             if key not in grouped_opportunities:
@@ -513,14 +519,20 @@ class MarketScanningService:
         sport_upper = sport.upper()
         is_player_prop = False
         
-        if (self.enable_player_props and 
-            sport_upper in self.player_props_sports and
-            player_id is not None and
-            market_type in self.main_line_types):
-            
-            # Check if this specific prop type is enabled for this sport
+        if self.enable_player_props and sport_upper in self.player_props_sports:
             sport_prop_types = self.sport_player_prop_types.get(sport_upper, set())
-            is_player_prop = market_sub_type in sport_prop_types
+            
+            # Two types of player props:
+            # 1. Standard player props with player_id and standard market types (total, moneyline, spread)
+            # 2. Special "sup_moneyline" props without player_id (category: "Props" or "Other")
+            
+            if market_type in self.main_line_types and player_id is not None:
+                # Standard player prop with player_id
+                is_player_prop = market_sub_type in sport_prop_types
+            elif market_type == 'sup_moneyline' and market_sub_type in sport_prop_types:
+                # Special sup_moneyline props (usually in "Props" or "Other" category)
+                # These don't have player_id but are still player props
+                is_player_prop = True
         
         should_process = is_main_line or is_player_prop
         
@@ -783,8 +795,15 @@ class MarketScanningService:
                                     liquidity_selection=selection,
                                     is_player_prop=is_prop  # NEW: Pass this flag
                                 )
-                                if opp and abs(opp.our_proposed_odds) <= 400:
-                                    opportunities.append(opp)
+                                if opp:
+                                    logger.info(f"✅ Created opportunity for {opp.market_name}: our_odds={opp.our_proposed_odds}, abs={abs(opp.our_proposed_odds)}")
+                                    if abs(opp.our_proposed_odds) <= 400:
+                                        opportunities.append(opp)
+                                        logger.info(f"   → Added to opportunities list")
+                                    else:
+                                        logger.warning(f"   ❌ FILTERED OUT: abs({opp.our_proposed_odds}) > 400")
+                                else:
+                                    logger.error(f"❌ _create_opportunity returned None for {market_ctx.get('name')}")
 
                 if market_type == 'moneyline':
                     selection_groups = market.get('selections', [])
@@ -808,11 +827,17 @@ class MarketScanningService:
         for market in player_prop_markets:
             try:
                 market_type = (market.get('type') or '').lower()
-                if market_type not in self.main_line_types:
+                
+                # sup_moneyline props have different structure - no market_lines, just selections
+                if market_type == 'sup_moneyline':
+                    # These have selections directly at root level
+                    selection_groups = market.get('selections', [])
+                    if selection_groups:
+                        await process_selection_groups(selection_groups, market, is_prop=True)
+                elif market_type not in self.main_line_types:
+                    # Skip unknown market types
                     continue
-
-                # Use the same process_selection_groups function with is_prop=True
-                if market_type == 'moneyline':
+                elif market_type == 'moneyline':
                     selection_groups = market.get('selections', [])
                     await process_selection_groups(selection_groups, market, is_prop=True)
                 else:
@@ -867,8 +892,20 @@ class MarketScanningService:
             player_name = None
             if is_player_prop:
                 player_id = str(market.get('player_id', ''))
-                player_name = market.get('name', '')  # e.g., "Michael Porter Jr. Total Points"
-                logger.info(f"   🏀 Player Prop: {player_name}")
+                
+                if not player_id or player_id == '':
+                    # For sup_moneyline props without player_id, use market name
+                    # e.g., "Brandon Hood Total Rushing Attempts" or "Honor Huff Total Points"
+                    market_name = market.get('name', '')
+                    player_name = market_name
+                    # Create a pseudo player_id from the market name for grouping purposes
+                    import hashlib
+                    player_id = hashlib.md5(market_name.encode()).hexdigest()[:16]
+                    logger.info(f"   🏈 Special Player Prop (no player_id): {market_name} → pseudo_id: {player_id}")
+                else:
+                    # Standard player prop with player_id
+                    player_name = market.get('name', '')  # e.g., "Michael Porter Jr. Total Points"
+                    logger.info(f"   🏀 Player Prop: {player_name}")
             
             # CORRECTED LOGIC: The large bettor bet the OPPOSITE side of available liquidity
             large_bet_side = self._get_opposite_side_with_context(
@@ -1001,8 +1038,8 @@ class MarketScanningService:
         
         # Special handling for totals markets to distinguish Over vs Under
         market_type_lower = market_type.lower()
-        if market_type_lower in ['total', 'totals']:
-            # For totals, we need to match both the direction (Over/Under) AND the line value
+        if market_type_lower in ['total', 'totals', 'sup_moneyline']:
+            # For totals/sup_moneyline, we need to match both the direction (Over/Under) AND the line value
             target_is_over = 'over' in target_clean
             target_is_under = 'under' in target_clean
             selection_is_over = 'over' in selection_clean
@@ -1161,8 +1198,8 @@ class MarketScanningService:
                 # Fallback if we can't parse the spread
                 return f"Opposite of {available_side}"
         
-        elif market_type in ['total', 'totals']:
-            # For totals, it's Over vs Under with same number
+        elif market_type in ['total', 'totals', 'sup_moneyline']:  # ← ADD sup_moneyline HERE
+            # For totals and sup_moneyline props, it's Over vs Under
             if 'over' in available_side.lower():
                 return available_side.replace('Over', 'Under').replace('over', 'Under')
             elif 'under' in available_side.lower():
@@ -1230,8 +1267,8 @@ class MarketScanningService:
             else:
                 return f"Opposite of {available_side}"
         
-        elif market_type in ['total', 'totals']:
-            # For totals, it's Over vs Under
+        elif market_type in ['total', 'totals', 'sup_moneyline']:  # ← ADD sup_moneyline HERE
+            # For totals and sup_moneyline props, it's Over vs Under
             if 'over' in available_side.lower():
                 return available_side.replace('Over', 'Under').replace('over', 'Under')
             elif 'under' in available_side.lower():

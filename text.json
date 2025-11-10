@@ -1,0 +1,199 @@
+            {
+                "category_name": "Threes",
+                "id": 200001840,
+                "market_lines": [
+                    {
+                        "favourite": true,
+                        "id": 200001840,
+                        "line": 1.5,
+                        "name": "Fixed total 1.5",
+                        "selections": [
+                            [
+                                {
+                                    "display_line": "1.5",
+                                    "display_name": "under 1.5",
+                                    "display_odds": "-116",
+                                    "line": 1.5,
+                                    "line_id": "b898e178d4cc44fe58c11cf41143eac5",
+                                    "name": "under 1.5",
+                                    "odds": -116,
+                                    "outcome_id": 13,
+                                    "stake": 3875.5,
+                                    "updated_at": 1762270796413452000,
+                                    "value": 4495.58
+                                },
+                                {
+                                    "display_line": "1.5",
+                                    "display_name": "under 1.5",
+                                    "display_odds": "-130",
+                                    "line": 1.5,
+                                    "line_id": "b898e178d4cc44fe58c11cf41143eac5",
+                                    "name": "under 1.5",
+                                    "odds": -130,
+                                    "outcome_id": 13,
+                                    "stake": 382.71,
+                                    "updated_at": 1762270359823910000,
+                                    "value": 497.52
+                                }
+                            ],
+                            [
+                                {
+                                    "display_line": "1.5",
+                                    "display_name": "over 1.5",
+                                    "display_odds": "+115",
+                                    "line": 1.5,
+                                    "line_id": "40d921943f4c67994992941e1e5b78a5",
+                                    "name": "over 1.5",
+                                    "odds": 115,
+                                    "outcome_id": 12,
+                                    "stake": 62,
+                                    "updated_at": 1762271001503566000,
+                                    "value": 3.92
+                                },
+                                {
+                                    "display_line": "1.5",
+                                    "display_name": "over 1.5",
+                                    "display_odds": "+103",
+                                    "line": 1.5,
+                                    "line_id": "40d921943f4c67994992941e1e5b78a5",
+                                    "name": "over 1.5",
+                                    "odds": 103,
+                                    "outcome_id": 12,
+                                    "stake": 514.06,
+                                    "updated_at": 1762270359809705000,
+                                    "value": 499.09
+                                }
+                            ]
+                        ],
+                        "type": "total"
+                    }
+                ],
+                "name": "Luke Kennard Total Three Pointers Made",
+                "player_id": 20001840,
+                "status": "active",
+                "sub_type": "player_total_three_pointers_made",
+                "total_matched": 2597.43,
+                "total_stake": 7374.21,
+                "type": "total",
+                "updated_at": 1762214859092951000
+            },
+
+                        {
+                "category_name": "Threes",
+                "id": 200003213,
+                "market_lines": [
+                    {
+                        "favourite": true,
+                        "id": 200003213,
+                        "line": 1.5,
+                        "name": "Fixed total 1.5",
+                        "selections": [
+                            [
+                                {
+                                    "display_line": "1.5",
+                                    "display_name": "under 1.5",
+                                    "display_odds": "-178",
+                                    "line": 1.5,
+                                    "line_id": "85e37282d3a72df0863881c908e34941",
+                                    "name": "under 1.5",
+                                    "odds": -178,
+                                    "outcome_id": 13,
+                                    "stake": 4243.9,
+                                    "updated_at": 1762270543008652000,
+                                    "value": 7514.59
+                                },
+                                {
+                                    "display_line": "1.5",
+                                    "display_name": "under 1.5",
+                                    "display_odds": "-205",
+                                    "line": 1.5,
+                                    "line_id": "85e37282d3a72df0863881c908e34941",
+                                    "name": "under 1.5",
+                                    "odds": -205,
+                                    "outcome_id": 13,
+                                    "stake": 239.82,
+                                    "updated_at": 1762271110086967000,
+                                    "value": 491.63
+                                }
+                            ],
+                            [
+                                {
+                                    "display_line": "1.5",
+                                    "display_name": "over 1.5",
+                                    "display_odds": "+162",
+                                    "line": 1.5,
+                                    "line_id": "98157d94139aba8ae33394e4d57ab5d1",
+                                    "name": "over 1.5",
+                                    "odds": 162,
+                                    "outcome_id": 12,
+                                    "stake": 616.06,
+                                    "updated_at": 1762271110091025000,
+                                    "value": 380.28
+                                }
+                            ]
+                        ],
+                        "type": "total"
+                    }
+                ],
+                "name": "Zaccharie Risacher Total Three Pointers Made",
+                "player_id": 20003213,
+                "status": "active",
+                "sub_type": "player_total_three_pointers_made",
+                "total_matched": 448.43,
+                "total_stake": 5525.99,
+                "type": "total",
+                "updated_at": 1762214859092951000
+            },            {
+                "category_name": "Props",
+                "id": 1500016561,
+                "line": 0,
+                "name": "Brandon Hood Total Rushing Attempts",
+                "selections": [
+                    [
+                        {
+                            "display_name": "Over 11.5",
+                            "display_odds": "+200",
+                            "line": 0,
+                            "line_id": "551b92a1373085652bc912cfba96d676",
+                            "name": "Over 11.5",
+                            "odds": 200,
+                            "outcome_id": 1,
+                            "stake": 980,
+                            "updated_at": 1762272210064403000,
+                            "value": 490
+                        },
+                        {
+                            "display_name": "Over 11.5",
+                            "display_odds": "+160",
+                            "line": 0,
+                            "line_id": "551b92a1373085652bc912cfba96d676",
+                            "name": "Over 11.5",
+                            "odds": 160,
+                            "outcome_id": 1,
+                            "stake": 5000,
+                            "updated_at": 1762281132571708000,
+                            "value": 3125
+                        }
+                    ],
+                    [
+                        {
+                            "display_name": "Under 11.5",
+                            "display_odds": "",
+                            "line": 0,
+                            "line_id": "2107505e143db449f50d37b12c79c0c3",
+                            "name": "Under 11.5",
+                            "odds": null,
+                            "outcome_id": 2,
+                            "stake": 0,
+                            "updated_at": 0,
+                            "value": 0
+                        }
+                    ]
+                ],
+                "status": "active",
+                "sub_type": "sup_moneyline",
+                "total_matched": 0,
+                "total_stake": 5980,
+                "type": "sup_moneyline",
+                "updated_at": 1762271100935766000
+            },

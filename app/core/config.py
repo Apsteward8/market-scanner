@@ -243,6 +243,13 @@ class Settings(BaseSettings):
         env="NCAAB_PLAYER_PROP_TYPES"
     )
 
+    ncaaf_player_props_min_stake_threshold: float = Field(3500.0, env="NCAAF_PLAYER_PROPS_MIN_STAKE_THRESHOLD")
+    ncaaf_player_props_min_individual_threshold: float = Field(1500.0, env="NCAAF_PLAYER_PROPS_MIN_INDIVIDUAL_THRESHOLD")
+    ncaaf_player_prop_types: str = Field(
+        "player_total_passing_yards,player_total_passing_touchdowns,player_total_rushing_yards,player_total_receiving_yards,player_total_receptions,sup_moneyline",
+        env="NCAAF_PLAYER_PROP_TYPES"
+    )
+
     def get_player_prop_threshold(self, sport: str, threshold_type: str) -> float:
         """Get player prop threshold for a sport"""
         sport_key = sport.lower().replace(' ', '_')  # Handle "Premier League" → "premier_league"
