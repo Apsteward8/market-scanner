@@ -2310,7 +2310,16 @@ class HighWagerMonitoringService:
     
     # Keep existing API fetching and conversion methods (unchanged)
     async def _fetch_current_wagers_from_api(self):
-        """Fetch current wagers from ProphetX API with pagination"""
+        """
+        Fetch current wagers from ProphetX API with pagination
+        
+        OPTIMIZED: Only fetches last 12 hours of wagers instead of 7 days
+        This significantly reduces API response time and data processing.
+        
+        Fetches wagers that are:
+        - Not yet filled (unmatched_stake > 0)
+        - Filled but not settled (matched_stake > 0, but event not completed)
+        """
         fetch_start = time.time()
         
         try:
@@ -2318,20 +2327,23 @@ class HighWagerMonitoringService:
             page_count = 0
             next_cursor = None
             
-            # Calculate time window (last 7 days to catch all recent bets)
+            # OPTIMIZED: Calculate time window (last 12 hours only)
+            # We only place bets 12 hours ahead, so no need for older data
             now_timestamp = int(time.time())
-            week_ago_timestamp = now_timestamp - (7 * 24 * 60 * 60)
+            twelve_hours_ago_timestamp = now_timestamp - (12 * 60 * 60)  # Changed from 7 days
             
             # Use the existing prophetx_service auth headers
             headers = await self.prophetx_service.auth_manager.get_betting_headers()
             base_url = self.prophetx_service.auth_manager.get_betting_base_url()
+            
+            logger.info(f"📋 Fetching wagers from last 12 hours (from {twelve_hours_ago_timestamp} to {now_timestamp})...")
             
             while True:
                 page_count += 1
                 
                 # Build query parameters
                 params = {
-                    "from": week_ago_timestamp,
+                    "from": twelve_hours_ago_timestamp,  # Changed from week_ago_timestamp
                     "to": now_timestamp,
                     "limit": 1000  # Maximum allowed
                 }
@@ -2378,6 +2390,7 @@ class HighWagerMonitoringService:
             logger.info(f"📋 Fetched {len(all_wagers)} total wagers from {page_count} pages")
             logger.info(f"   🤖 {len(system_wagers)} system wagers (with external_id)")
             logger.info(f"   ✅ {len(active_wagers)} active system wagers")
+            logger.info(f"   ⏱️ Fetch completed in {self.wager_fetch_duration:.1f}s")
             
         except Exception as e:
             logger.error(f"Error fetching current wagers: {e}", exc_info=True)
