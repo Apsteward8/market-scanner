@@ -1036,7 +1036,12 @@ class MarketScanningService:
         if selection_clean == target_clean:
             return True
         
-        # Special handling for totals markets to distinguish Over vs Under
+        # Special handling for YES/NO binary props
+        # These can be moneyline or other types
+        if (selection_clean in ['yes', 'no']) and (target_clean in ['yes', 'no']):
+            return selection_clean == target_clean
+        
+        # Special handling for totals and sup_moneyline markets to distinguish Over vs Under
         market_type_lower = market_type.lower()
         if market_type_lower in ['total', 'totals', 'sup_moneyline']:
             # For totals/sup_moneyline, we need to match both the direction (Over/Under) AND the line value
@@ -1120,6 +1125,10 @@ class MarketScanningService:
         """Extract line information for spreads and totals"""
         market_type = market.get('type', '').lower()
         
+        # For YES/NO binary props, just return the side
+        if selection_side.upper() in ['YES', 'NO']:
+            return selection_side.upper()
+        
         if market_type == 'spread':
             # For spreads, check if we have line info from market_lines structure
             if 'line_value' in market:
@@ -1136,7 +1145,7 @@ class MarketScanningService:
                     return selection_side
                 return "Unknown Spread"
         
-        elif market_type in ['total', 'totals']:
+        elif market_type in ['total', 'totals', 'sup_moneyline']:
             # For totals, show Over/Under with line value
             if 'line_value' in market:
                 line_val = market.get('line_value', 0)
@@ -1147,7 +1156,7 @@ class MarketScanningService:
                 return selection_side
         
         else:
-            # For moneyline, just return the team name
+            # For moneyline, just return the team name or side
             return selection_side
     
     def _get_opposite_side(self, available_side: str, market_type: str) -> str:
@@ -1210,11 +1219,20 @@ class MarketScanningService:
         return f"Opposite of {available_side}"
     
     def _get_opposite_side_with_context(self, available_side: str, market_type: str, 
-                                      home_team: str, away_team: str) -> str:
+                                    home_team: str, away_team: str) -> str:
         """
         Determine the opposite side with event context for better team name resolution
         """
         market_type = market_type.lower()
+        available_side_clean = available_side.strip()
+        available_side_lower = available_side_clean.lower()
+        
+        # CRITICAL: Handle YES/NO props FIRST (before any other logic)
+        # These are binary props like "To Score a Touchdown", "To Record a Sack", etc.
+        if available_side_lower == 'yes':
+            return 'NO'
+        elif available_side_lower == 'no':
+            return 'YES'
         
         if market_type == 'moneyline':
             # For moneylines, if available_side matches one team, return the other team directly
@@ -1267,7 +1285,7 @@ class MarketScanningService:
             else:
                 return f"Opposite of {available_side}"
         
-        elif market_type in ['total', 'totals', 'sup_moneyline']:  # ← ADD sup_moneyline HERE
+        elif market_type in ['total', 'totals', 'sup_moneyline']:
             # For totals and sup_moneyline props, it's Over vs Under
             if 'over' in available_side.lower():
                 return available_side.replace('Over', 'Under').replace('over', 'Under')
