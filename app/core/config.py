@@ -250,6 +250,13 @@ class Settings(BaseSettings):
         env="NCAAF_PLAYER_PROP_TYPES"
     )
 
+    enable_dynamic_thresholds: bool = Field(True, env="ENABLE_DYNAMIC_THRESHOLDS")
+    dynamic_threshold_multiplier: float = Field(0.75, env="DYNAMIC_THRESHOLD_MULTIPLIER")
+    dynamic_threshold_min_ratio: float = Field(3.0, env="DYNAMIC_THRESHOLD_MIN_RATIO")
+    enable_odds_competitiveness: bool = Field(True, env="ENABLE_ODDS_COMPETITIVENESS")
+    max_odds_difference_for_competitiveness: int = Field(5, env="MAX_ODDS_DIFFERENCE_FOR_COMPETITIVENESS")
+    min_liquidity_ratio_for_better_odds: float = Field(0.15, env="MIN_LIQUIDITY_RATIO_FOR_BETTER_ODDS")
+
     def get_player_prop_threshold(self, sport: str, threshold_type: str) -> float:
         """Get player prop threshold for a sport"""
         sport_key = sport.lower().replace(' ', '_')  # Handle "Premier League" → "premier_league"
@@ -332,7 +339,7 @@ class Settings(BaseSettings):
     # Multi-Sport Configuration
     # =============================================================================
     target_sports: str = Field("ncaaf,mlb", description="Comma-separated list of sports to scan")
-    scan_window_hours: int = Field(12, description="Hours to look ahead for events")
+    scan_window_hours: int = Field(16, description="Hours to look ahead for events")
     
     # ProphetX Tournament IDs  
     ncaaf_tournament_id: str = Field("27653", description="ProphetX NCAAF tournament ID")

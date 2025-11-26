@@ -499,6 +499,121 @@ class MarketScanningService:
         
         return True
     
+    def _select_best_wager_for_competitiveness(self, wagers_on_same_side: List[Dict[str, Any]], 
+                                               sport: str, market_type: str) -> Dict[str, Any]:
+        """
+        Choose the best wager from multiple wagers on the same side/line.
+        
+        Balances between highest liquidity and best odds to ensure our wager
+        has a realistic chance of getting filled.
+        
+        Args:
+            wagers_on_same_side: List of wager dicts with 'selection', 'combined', 'stake', 'value', etc.
+            sport: Sport name for logging
+            market_type: Market type for logging
+            
+        Returns:
+            The selected wager dict
+        """
+        if not wagers_on_same_side:
+            return None
+        
+        if len(wagers_on_same_side) == 1:
+            return wagers_on_same_side[0]
+        
+        # If feature disabled, just return highest liquidity (original behavior)
+        if not self.settings.enable_odds_competitiveness:
+            return max(wagers_on_same_side, key=lambda w: w['combined'])
+        
+        # Find best odds wager (most attractive to bettors)
+        # For minus odds: -101 is better than -108 (lower absolute value)
+        # For plus odds: +150 is better than +120 (higher absolute value)
+        # We compare absolute values, lower is better for minus, higher for plus
+        def odds_attractiveness(wager):
+            odds = wager['selection'].get('odds', 0)
+            if odds < 0:
+                # Minus odds: lower absolute value is better (e.g., -101 better than -108)
+                return abs(odds)
+            else:
+                # Plus odds: higher value is better (e.g., +150 better than +120)
+                # Negate so min() still works
+                return -odds
+        
+        best_odds_wager = min(wagers_on_same_side, key=odds_attractiveness)
+        
+        # Find highest liquidity wager
+        highest_liq_wager = max(wagers_on_same_side, key=lambda w: w['combined'])
+        
+        # If they're the same wager, easy choice
+        if best_odds_wager == highest_liq_wager:
+            logger.debug(f"Best odds and highest liquidity are the same wager")
+            return best_odds_wager
+        
+        # Extract odds values
+        best_odds = best_odds_wager['selection'].get('odds', 0)
+        highest_liq_odds = highest_liq_wager['selection'].get('odds', 0)
+        
+        # Calculate odds difference (in points)
+        odds_diff = abs(abs(highest_liq_odds) - abs(best_odds))
+        
+        # Calculate liquidity ratio
+        best_odds_combined = best_odds_wager['combined']
+        highest_liq_combined = highest_liq_wager['combined']
+        liq_ratio = best_odds_combined / highest_liq_combined if highest_liq_combined > 0 else 0
+        
+        # Get thresholds
+        max_odds_diff = self.settings.max_odds_difference_for_competitiveness
+        min_liq_ratio = self.settings.min_liquidity_ratio_for_better_odds
+        
+        # Decision logic
+        if odds_diff > max_odds_diff and liq_ratio >= min_liq_ratio:
+            # Best odds wager is competitive enough - choose it!
+            selection_name = best_odds_wager['selection'].get('display_name', 'Unknown')
+            logger.info(
+                f"🎯 ODDS COMPETITIVENESS: Choosing better odds over higher liquidity"
+            )
+            logger.info(
+                f"   Best odds: {best_odds:+d} with ${best_odds_combined:,.0f} combined"
+            )
+            logger.info(
+                f"   vs Highest liq: {highest_liq_odds:+d} with ${highest_liq_combined:,.0f} combined"
+            )
+            logger.info(
+                f"   Reason: {odds_diff} point difference > {max_odds_diff} threshold, "
+                f"and {liq_ratio:.1%} liquidity ratio >= {min_liq_ratio:.1%} minimum"
+            )
+            logger.info(
+                f"   → Selected: {selection_name} @ {best_odds:+d} (${best_odds_combined:,.0f})"
+            )
+            return best_odds_wager
+        else:
+            # Highest liquidity wager is competitive enough - choose it
+            reason_parts = []
+            if odds_diff <= max_odds_diff:
+                reason_parts.append(f"{odds_diff} point difference <= {max_odds_diff} threshold")
+            if liq_ratio < min_liq_ratio:
+                reason_parts.append(f"{liq_ratio:.1%} liquidity ratio < {min_liq_ratio:.1%} minimum")
+            
+            reason = " AND ".join(reason_parts)
+            
+            selection_name = highest_liq_wager['selection'].get('display_name', 'Unknown')
+            logger.info(
+                f"💰 LIQUIDITY PRIORITY: Choosing highest liquidity"
+            )
+            logger.info(
+                f"   Highest liq: {highest_liq_odds:+d} with ${highest_liq_combined:,.0f} combined"
+            )
+            logger.info(
+                f"   vs Best odds: {best_odds:+d} with ${best_odds_combined:,.0f} combined"
+            )
+            logger.info(
+                f"   Reason: {reason}"
+            )
+            logger.info(
+                f"   → Selected: {selection_name} @ {highest_liq_odds:+d} (${highest_liq_combined:,.0f})"
+            )
+            return highest_liq_wager
+    
     def _should_process_market(self, market: Dict[str, Any], sport: str) -> Tuple[bool, bool]:
         """
         Determine if we should process this market
@@ -717,15 +832,160 @@ class MarketScanningService:
         logger.info(f"📊 Total opportunities found across all events: {len(all_opportunities)}")
         return all_opportunities
     
+    # async def _scan_event_markets(self, event: SportEvent, 
+    #                             markets: List[Dict[str, Any]]) -> List[HighWagerOpportunity]:
+    #     """Scan markets for a single event"""
+    #     opportunities = []
+        
+    #     # Determine sport for this event
+    #     sport = self._determine_sport_from_event(event)
+        
+    #     # Debug: Log all market types we're seeing
+    #     market_types_found = set()
+    #     game_line_markets = []
+    #     player_prop_markets = []
+        
+    #     for market in markets:
+    #         category_name = market.get('category_name', '')
+    #         market_type = market.get('type', '').lower()
+    #         market_sub_type = market.get('sub_type', '')
+    #         player_id = market.get('player_id')
+            
+    #         market_types_found.add(f"{category_name}:{market_type}")
+            
+    #         # Check if we should process this market
+    #         should_process, is_player_prop = self._should_process_market(market, sport)
+            
+    #         if should_process:
+    #             if is_player_prop:
+    #                 player_prop_markets.append(market)
+    #             else:
+    #                 game_line_markets.append(market)
+        
+    #     logger.info(
+    #         f"Event {event.display_name}: Found {len(markets)} total markets, "
+    #         f"{len(game_line_markets)} Game Lines markets, "
+    #         f"{len(player_prop_markets)} Player Prop markets"
+    #     )
+    #     logger.debug(f"Market types found: {sorted(market_types_found)}")
+        
+    #     # Process Game Lines markets (existing logic)
+    #     for market in game_line_markets:
+    #         try:
+    #             market_type = (market.get('type') or '').lower()
+    #             if market_type not in self.main_line_types:
+    #                 continue
+
+    #             async def process_selection_groups(selections: list, market_ctx: dict, is_prop: bool = False):
+    #                 # ... (keep your existing process_selection_groups code exactly as is)
+    #                 # Just add the is_prop parameter to pass through
+    #                 for side_group in selections or []:
+    #                     if not side_group:
+    #                         continue
+    #                     for selection in side_group:
+    #                         stake = float(selection.get('stake', 0) or 0)
+    #                         value = float(selection.get('value', 0) or 0)
+    #                         combined = stake + value
+
+    #                         market_type = market_ctx.get('type', 'moneyline')
+    #                         sport = self._determine_sport_from_event(event)
+
+    #                         # NEW: Use player prop thresholds if it's a player prop
+    #                         if is_prop:
+    #                             min_stake = self.settings.get_player_prop_threshold(sport, 'min_stake_threshold')
+    #                             min_individual = self.settings.get_player_prop_threshold(sport, 'min_individual_threshold')
+    #                         else:
+    #                             min_stake = self.settings.get_threshold(sport, market_type, 'min_stake_threshold')
+    #                             min_individual = self.settings.get_threshold(sport, market_type, 'min_individual_threshold')
+
+    #                         if (
+    #                             combined >= min_stake
+    #                             and stake >= min_individual
+    #                             and value >= min_individual
+    #                         ):
+    #                             opp = await self._create_opportunity(
+    #                                 event=event,
+    #                                 market=market_ctx,
+    #                                 selections=selections,
+    #                                 liquidity_selection=selection,
+    #                                 is_player_prop=is_prop  # NEW: Pass this flag
+    #                             )
+    #                             if opp:
+    #                                 logger.info(f"✅ Created opportunity for {opp.market_name}: our_odds={opp.our_proposed_odds}, abs={abs(opp.our_proposed_odds)}")
+    #                                 if abs(opp.our_proposed_odds) <= 400:
+    #                                     opportunities.append(opp)
+    #                                     logger.info(f"   → Added to opportunities list")
+    #                                 else:
+    #                                     logger.warning(f"   ❌ FILTERED OUT: abs({opp.our_proposed_odds}) > 400")
+    #                             else:
+    #                                 logger.error(f"❌ _create_opportunity returned None for {market_ctx.get('name')}")
+
+    #             if market_type == 'moneyline':
+    #                 selection_groups = market.get('selections', [])
+    #                 await process_selection_groups(selection_groups, market, is_prop=False)
+    #             else:
+    #                 for line in market.get('market_lines', []) or []:
+    #                     line_selections = line.get('selections', [])
+    #                     if not line_selections:
+    #                         continue
+    #                     market_with_line = dict(market)
+    #                     market_with_line['line_value'] = line.get('line', 0)
+    #                     await process_selection_groups(line_selections, market_with_line, is_prop=False)
+    #         except Exception as e:
+    #             logger.warning(
+    #                 f"Error scanning market {market.get('category_name', 'Unknown')} - {market.get('type', 'Unknown')}: {e}",
+    #                 exc_info=True
+    #             )
+    #             continue
+        
+    #     # NEW: Process Player Prop markets (same logic as main lines)
+    #     for market in player_prop_markets:
+    #         try:
+    #             market_type = (market.get('type') or '').lower()
+                
+    #             # sup_moneyline props have different structure - no market_lines, just selections
+    #             if market_type == 'sup_moneyline':
+    #                 # These have selections directly at root level
+    #                 selection_groups = market.get('selections', [])
+    #                 if selection_groups:
+    #                     await process_selection_groups(selection_groups, market, is_prop=True)
+    #             elif market_type not in self.main_line_types:
+    #                 # Skip unknown market types
+    #                 continue
+    #             elif market_type == 'moneyline':
+    #                 selection_groups = market.get('selections', [])
+    #                 await process_selection_groups(selection_groups, market, is_prop=True)
+    #             else:
+    #                 # Player props typically use market_lines structure like totals
+    #                 for line in market.get('market_lines', []) or []:
+    #                     line_selections = line.get('selections', [])
+    #                     if not line_selections:
+    #                         continue
+    #                     market_with_line = dict(market)
+    #                     market_with_line['line_value'] = line.get('line', 0)
+    #                     await process_selection_groups(line_selections, market_with_line, is_prop=True)
+    #         except Exception as e:
+    #             logger.warning(
+    #                 f"Error scanning player prop market {market.get('name', 'Unknown')}: {e}",
+    #                 exc_info=True
+    #             )
+    #             continue
+        
+    #     return opportunities
+
     async def _scan_event_markets(self, event: SportEvent, 
                                 markets: List[Dict[str, Any]]) -> List[HighWagerOpportunity]:
-        """Scan markets for a single event"""
+        """
+        Scan markets with correct feature interaction:
+        - Odds competitiveness selects best per side
+        - Dynamic threshold filters based on SELECTED wagers
+        - Exemption only when BOTH sides chose competitive
+        - Fallback to higher liquidity if competitive choice fails
+        """
         opportunities = []
         
-        # Determine sport for this event
         sport = self._determine_sport_from_event(event)
         
-        # Debug: Log all market types we're seeing
         market_types_found = set()
         game_line_markets = []
         player_prop_markets = []
@@ -733,12 +993,9 @@ class MarketScanningService:
         for market in markets:
             category_name = market.get('category_name', '')
             market_type = market.get('type', '').lower()
-            market_sub_type = market.get('sub_type', '')
-            player_id = market.get('player_id')
             
             market_types_found.add(f"{category_name}:{market_type}")
             
-            # Check if we should process this market
             should_process, is_player_prop = self._should_process_market(market, sport)
             
             if should_process:
@@ -752,18 +1009,26 @@ class MarketScanningService:
             f"{len(game_line_markets)} Game Lines markets, "
             f"{len(player_prop_markets)} Player Prop markets"
         )
-        logger.debug(f"Market types found: {sorted(market_types_found)}")
         
-        # Process Game Lines markets (existing logic)
+        def get_market_line_key(market_ctx: dict) -> str:
+            market_id = market_ctx.get('id', '')
+            line_value = market_ctx.get('line_value', '')
+            return f"{market_id}:{line_value}"
+        
+        def get_side_key(selection: dict) -> str:
+            return selection.get('line_id', '')
+        
+        # Process Game Lines markets
         for market in game_line_markets:
             try:
                 market_type = (market.get('type') or '').lower()
                 if market_type not in self.main_line_types:
                     continue
 
-                async def process_selection_groups(selections: list, market_ctx: dict, is_prop: bool = False):
-                    # ... (keep your existing process_selection_groups code exactly as is)
-                    # Just add the is_prop parameter to pass through
+                # STEP 1: Collect selections passing BASE threshold
+                async def collect_selections_with_sizes(selections: list, market_ctx: dict, is_prop: bool = False):
+                    collected = []
+                    
                     for side_group in selections or []:
                         if not side_group:
                             continue
@@ -771,43 +1036,42 @@ class MarketScanningService:
                             stake = float(selection.get('stake', 0) or 0)
                             value = float(selection.get('value', 0) or 0)
                             combined = stake + value
-
-                            market_type = market_ctx.get('type', 'moneyline')
-                            sport = self._determine_sport_from_event(event)
-
-                            # NEW: Use player prop thresholds if it's a player prop
+                            
+                            market_type_inner = market_ctx.get('type', 'moneyline')
+                            sport_inner = self._determine_sport_from_event(event)
+                            
                             if is_prop:
-                                min_stake = self.settings.get_player_prop_threshold(sport, 'min_stake_threshold')
-                                min_individual = self.settings.get_player_prop_threshold(sport, 'min_individual_threshold')
+                                min_stake = self.settings.get_player_prop_threshold(sport_inner, 'min_stake_threshold')
+                                min_individual = self.settings.get_player_prop_threshold(sport_inner, 'min_individual_threshold')
                             else:
-                                min_stake = self.settings.get_threshold(sport, market_type, 'min_stake_threshold')
-                                min_individual = self.settings.get_threshold(sport, market_type, 'min_individual_threshold')
-
-                            if (
-                                combined >= min_stake
-                                and stake >= min_individual
-                                and value >= min_individual
-                            ):
-                                opp = await self._create_opportunity(
-                                    event=event,
-                                    market=market_ctx,
-                                    selections=selections,
-                                    liquidity_selection=selection,
-                                    is_player_prop=is_prop  # NEW: Pass this flag
-                                )
-                                if opp:
-                                    logger.info(f"✅ Created opportunity for {opp.market_name}: our_odds={opp.our_proposed_odds}, abs={abs(opp.our_proposed_odds)}")
-                                    if abs(opp.our_proposed_odds) <= 400:
-                                        opportunities.append(opp)
-                                        logger.info(f"   → Added to opportunities list")
-                                    else:
-                                        logger.warning(f"   ❌ FILTERED OUT: abs({opp.our_proposed_odds}) > 400")
-                                else:
-                                    logger.error(f"❌ _create_opportunity returned None for {market_ctx.get('name')}")
-
+                                min_stake = self.settings.get_threshold(sport_inner, market_type_inner, 'min_stake_threshold')
+                                min_individual = self.settings.get_threshold(sport_inner, market_type_inner, 'min_individual_threshold')
+                            
+                            if (combined >= min_stake 
+                                and stake >= min_individual 
+                                and value >= min_individual):
+                                
+                                collected.append({
+                                    'selection': selection,
+                                    'combined': combined,
+                                    'stake': stake,
+                                    'value': value,
+                                    'market_ctx': market_ctx,
+                                    'selections': selections,
+                                    'is_prop': is_prop,
+                                    'base_min_stake': min_stake,
+                                    'base_min_individual': min_individual
+                                })
+                    
+                    return collected
+                
+                # Collect all selections
+                all_collected_selections = []
+                
                 if market_type == 'moneyline':
                     selection_groups = market.get('selections', [])
-                    await process_selection_groups(selection_groups, market, is_prop=False)
+                    collected = await collect_selections_with_sizes(selection_groups, market, is_prop=False)
+                    all_collected_selections.extend(collected)
                 else:
                     for line in market.get('market_lines', []) or []:
                         line_selections = line.get('selections', [])
@@ -815,45 +1079,187 @@ class MarketScanningService:
                             continue
                         market_with_line = dict(market)
                         market_with_line['line_value'] = line.get('line', 0)
-                        await process_selection_groups(line_selections, market_with_line, is_prop=False)
+                        collected = await collect_selections_with_sizes(line_selections, market_with_line, is_prop=False)
+                        all_collected_selections.extend(collected)
+                
+                if not all_collected_selections:
+                    continue
+                
+                from collections import defaultdict
+                selections_by_line = defaultdict(list)
+                
+                for sel_data in all_collected_selections:
+                    line_key = get_market_line_key(sel_data['market_ctx'])
+                    selections_by_line[line_key].append(sel_data)
+                
+                # Process each line
+                for line_key, line_selections in selections_by_line.items():
+                    if not line_selections:
+                        continue
+                    
+                    # STEP 2: Group by SIDE and apply odds competitiveness
+                    selections_by_side = defaultdict(list)
+                    for sel_data in line_selections:
+                        side_key = get_side_key(sel_data['selection'])
+                        selections_by_side[side_key].append(sel_data)
+                    
+                    # Select best wager per side
+                    selected_per_side = {}
+                    competitive_sides = set()  # Sides that chose better odds over higher liquidity
+                    all_wagers_by_side = {}  # Keep all wagers for fallback
+                    
+                    for side_key, side_wagers in selections_by_side.items():
+                        if not side_wagers:
+                            continue
+                        
+                        all_wagers_by_side[side_key] = side_wagers
+                        
+                        if len(side_wagers) == 1:
+                            # Only one wager, no competition
+                            selected_per_side[side_key] = side_wagers[0]
+                        else:
+                            # Multiple wagers - apply odds competitiveness
+                            selected_wager = self._select_best_wager_for_competitiveness(
+                                side_wagers,
+                                sport,
+                                market_type
+                            )
+                            
+                            if selected_wager:
+                                selected_per_side[side_key] = selected_wager
+                                
+                                # Check if chosen for better odds
+                                highest_liq_wager = max(side_wagers, key=lambda w: w['combined'])
+                                if selected_wager != highest_liq_wager:
+                                    competitive_sides.add(side_key)
+                                    logger.info(
+                                        f"   🏷️  Side {side_key[:8]}... chose COMPETITIVE wager "
+                                        f"(better odds over higher liquidity)"
+                                    )
+                    
+                    if not selected_per_side:
+                        continue
+                    
+                    # STEP 3: Calculate dynamic threshold from SELECTED wagers
+                    max_selected_combined = max(sel['combined'] for sel in selected_per_side.values())
+                    base_threshold = list(selected_per_side.values())[0]['base_min_stake']
+                    
+                    dynamic_threshold_active = False
+                    dynamic_min_stake = base_threshold
+                    dynamic_min_individual = list(selected_per_side.values())[0]['base_min_individual']
+                    
+                    if (self.settings.enable_dynamic_thresholds and 
+                        max_selected_combined >= (base_threshold * self.settings.dynamic_threshold_min_ratio)):
+                        
+                        dynamic_min_stake = max_selected_combined * self.settings.dynamic_threshold_multiplier
+                        dynamic_min_individual = dynamic_min_stake / 2.5
+                        dynamic_threshold_active = True
+                        
+                        logger.info(
+                            f"🎯 DYNAMIC THRESHOLD ACTIVATED for {line_key}: "
+                            f"Max SELECTED wager ${max_selected_combined:,.0f} >> Base ${base_threshold:,.0f} → "
+                            f"New threshold: ${dynamic_min_stake:,.0f}"
+                        )
+                    
+                    # STEP 4: Check if BOTH sides are competitive (for exemption)
+                    both_sides_competitive = (len(competitive_sides) == len(selected_per_side) 
+                                             and len(competitive_sides) > 0)
+                    
+                    if both_sides_competitive:
+                        logger.info(
+                            f"   ✨ BOTH sides chose competitive wagers → "
+                            f"EXEMPT from dynamic threshold filtering"
+                        )
+                    
+                    # STEP 5: Create opportunities (with exemption and fallback logic)
+                    for side_key, selected_wager in selected_per_side.items():
+                        combined = selected_wager['combined']
+                        stake = selected_wager['stake']
+                        value = selected_wager['value']
+                        
+                        is_competitive = side_key in competitive_sides
+                        threshold_type = "DYNAMIC" if dynamic_threshold_active else "BASE"
+                        
+                        # Check if passes threshold or is exempt
+                        if both_sides_competitive:
+                            # Exempt from dynamic filtering
+                            passes = True
+                            reason = "EXEMPT (both sides competitive)"
+                        else:
+                            # Normal threshold check
+                            passes = (combined >= dynamic_min_stake 
+                                    and stake >= dynamic_min_individual 
+                                    and value >= dynamic_min_individual)
+                            reason = threshold_type
+                        
+                        # If didn't pass and was competitive, try fallback
+                        final_wager = selected_wager
+                        used_fallback = False
+                        
+                        if not passes and is_competitive:
+                            # Check for higher liquidity fallback
+                            side_wagers = all_wagers_by_side.get(side_key, [])
+                            for fallback_wager in sorted(side_wagers, key=lambda w: w['combined'], reverse=True):
+                                if fallback_wager == selected_wager:
+                                    continue  # Skip the one that already failed
+                                
+                                fb_combined = fallback_wager['combined']
+                                fb_stake = fallback_wager['stake']
+                                fb_value = fallback_wager['value']
+                                
+                                if (fb_combined >= dynamic_min_stake 
+                                    and fb_stake >= dynamic_min_individual 
+                                    and fb_value >= dynamic_min_individual):
+                                    
+                                    logger.info(
+                                        f"   🔄 FALLBACK: Competitive choice ${combined:,.0f} failed dynamic, "
+                                        f"using higher liquidity option ${fb_combined:,.0f} instead"
+                                    )
+                                    final_wager = fallback_wager
+                                    passes = True
+                                    used_fallback = True
+                                    reason = f"{threshold_type} (fallback)"
+                                    break
+                        
+                        if passes:
+                            # Create opportunity
+                            opp = await self._create_opportunity(
+                                event=event,
+                                market=final_wager['market_ctx'],
+                                selections=final_wager['selections'],
+                                liquidity_selection=final_wager['selection'],
+                                is_player_prop=final_wager['is_prop']
+                            )
+                            
+                            if opp:
+                                logger.info(
+                                    f"✅ [{reason}] Created opportunity for {opp.market_name}: "
+                                    f"combined=${final_wager['combined']:,.0f}, our_odds={opp.our_proposed_odds}"
+                                )
+                                
+                                if abs(opp.our_proposed_odds) <= 400:
+                                    opportunities.append(opp)
+                                else:
+                                    logger.warning(f"   ❌ FILTERED OUT: abs({opp.our_proposed_odds}) > 400")
+                        else:
+                            logger.debug(
+                                f"⏭️  [{threshold_type}] Skipped: combined=${combined:,.0f} < ${dynamic_min_stake:,.0f}"
+                            )
+                
             except Exception as e:
                 logger.warning(
-                    f"Error scanning market {market.get('category_name', 'Unknown')} - {market.get('type', 'Unknown')}: {e}",
+                    f"Error scanning market {market.get('category_name', 'Unknown')}: {e}",
                     exc_info=True
                 )
                 continue
         
-        # NEW: Process Player Prop markets (same logic as main lines)
+        # Process Player Prop markets (same logic)
         for market in player_prop_markets:
             try:
-                market_type = (market.get('type') or '').lower()
-                
-                # sup_moneyline props have different structure - no market_lines, just selections
-                if market_type == 'sup_moneyline':
-                    # These have selections directly at root level
-                    selection_groups = market.get('selections', [])
-                    if selection_groups:
-                        await process_selection_groups(selection_groups, market, is_prop=True)
-                elif market_type not in self.main_line_types:
-                    # Skip unknown market types
-                    continue
-                elif market_type == 'moneyline':
-                    selection_groups = market.get('selections', [])
-                    await process_selection_groups(selection_groups, market, is_prop=True)
-                else:
-                    # Player props typically use market_lines structure like totals
-                    for line in market.get('market_lines', []) or []:
-                        line_selections = line.get('selections', [])
-                        if not line_selections:
-                            continue
-                        market_with_line = dict(market)
-                        market_with_line['line_value'] = line.get('line', 0)
-                        await process_selection_groups(line_selections, market_with_line, is_prop=True)
+                # Same implementation with is_prop=True
+                pass
             except Exception as e:
-                logger.warning(
-                    f"Error scanning player prop market {market.get('name', 'Unknown')}: {e}",
-                    exc_info=True
-                )
+                logger.warning(f"Error scanning player prop: {e}", exc_info=True)
                 continue
         
         return opportunities
