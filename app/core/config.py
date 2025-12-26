@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     english_championship_min_stake_threshold: Optional[float] = Field(None, description="English Championship default minimum combined")
     english_championship_min_individual_threshold: Optional[float] = Field(None, description="English Championship default minimum individual")
 
+    fa_cup_min_stake_threshold: Optional[float] = Field(None, description="FA Cup default minimum combined")
+    fa_cup_min_individual_threshold: Optional[float] = Field(None, description="FA Cup default minimum individual")
+
     cfl_min_stake_threshold: Optional[float] = Field(None, description="CFL default minimum combined")
     cfl_min_individual_threshold: Optional[float] = Field(None, description="CFL default minimum individual")
 
@@ -212,6 +215,13 @@ class Settings(BaseSettings):
     english_championship_total_min_individual_threshold: Optional[float] = Field(None)
     english_championship_moneyline_min_stake_threshold: Optional[float] = Field(None)
     english_championship_moneyline_min_individual_threshold: Optional[float] = Field(None)
+
+    fa_cup_spread_min_stake_threshold: Optional[float] = Field(None)
+    fa_cup_spread_min_individual_threshold: Optional[float] = Field(None)
+    fa_cup_total_min_stake_threshold: Optional[float] = Field(None)
+    fa_cup_total_min_individual_threshold: Optional[float] = Field(None)
+    fa_cup_moneyline_min_stake_threshold: Optional[float] = Field(None)
+    fa_cup_moneyline_min_individual_threshold: Optional[float] = Field(None)
 
     # Player Props Configuration
     enable_player_props: bool = Field(False, env="ENABLE_PLAYER_PROPS")
@@ -360,6 +370,7 @@ class Settings(BaseSettings):
     ufc_tournament_id: Optional[str] = Field(None, description="ProphetX UFC tournament ID")
     mls_tournament_id: Optional[str] = Field(None, description="ProphetX MLS tournament ID")
     english_championship_tournament_id: Optional[str] = Field(None, description="ProphetX English Championship tournament ID")
+    fa_cup_tournament_id: Optional[str] = Field(None, description="ProphetX FA Cup tournament ID")
 
     # =============================================================================
     # Computed Properties
@@ -442,6 +453,8 @@ class Settings(BaseSettings):
             mapping['mls'] = self.mls_tournament_id
         if 'english_championship' in self.target_sports_list and self.english_championship_tournament_id:
             mapping['english_championship'] = self.english_championship_tournament_id
+        if 'fa_cup' in self.target_sports_list and self.fa_cup_tournament_id:
+            mapping['fa_cup'] = self.fa_cup_tournament_id
         return mapping
     
     def get_sport_display_name(self, sport: str) -> str:
@@ -464,7 +477,8 @@ class Settings(BaseSettings):
             'cfl': 'CFL',
             'ufc': 'UFC',
             'mls': 'MLS',
-            'english_championship': 'English Championship'
+            'english_championship': 'English Championship',
+            'fa_cup': 'FA Cup'
         }
         return sport_names.get(sport.lower(), sport.upper())
     
